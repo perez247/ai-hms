@@ -1,0 +1,59 @@
+import { Component, OnInit, inject, signal } from '@angular/core';
+import { CurrencyPipe } from '@angular/common';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { RouterLink } from '@angular/router';
+import { ApiService } from '../../core/api.service';
+import { ToastService } from '../../core/toast.service';
+import { StaffRole, UserRecord } from '../../core/models';
+
+/** HR account creation, disablement and CSV export. */
+@Component({
+  selector: 'app-hr-users',
+  imports: [ReactiveFormsModule, CurrencyPipe, RouterLink],
+  templateUrl: './hr-users.component.html',
+})
+export class HrUsersComponent implements OnInit {
+  private readonly api = inject(ApiService);
+  private readonly toast = inject(ToastService);
+  private readonly fb = inject(FormBuilder);
+  readonly users = signal<UserRecord[]>([]);
+  readonly notice = signal<string | null>(null);
+  readonly showCreate = signal(false);
+  readonly roles: StaffRole[] = ['Receptionist', 'Nurse', 'Doctor', 'Pharmacy', 'Finance', 'HmoOffice', 'HrOffice', 'Admin'];
+  readonly form = this.fb.nonNullable.group({
+    fullName: ['', Validators.required], email: ['', [Validators.required, Validators.email]],
+    password: ['ChangeMe123!', [Validators.required, Validators.minLength(10)]],
+    staffRole: ['Receptionist' as StaffRole, Validators.required], employeeNumber: [''],
+    phone: [''], salaryAmount: [0], bankName: [''], bankAccountName: [''], bankAccountNumber: [''],
+  });
+  activeFilter: boolean | null = true;
+
+  ngOnInit(): void { this.load(); }
+
+  load(): void {
+    this.api.hr.users(this.activeFilter ?? undefined).subscribe({
+      next: (page) => this.users.set(page.items),
+      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load users.'),
+    });
+  }
+
+  create(): void {
+    if (this.form.invalid) return;
+    const value = this.form.getRawValue();
+    this.api.hr.create({ ...value, salaryAmount: Number(value.salaryAmount) || null, employeeNumber: value.employeeNumber || null }).subscribe({
+      next: () => { this.notice.set('User account created.'); this.showCreate.set(false); this.form.reset({ staffRole: 'Receptionist', password: 'ChangeMe123!' }); this.load(); },
+      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not create user.'),
+    });
+  }
+
+  disable(user: UserRecord): void {
+    const reason = prompt(`Reason for disabling ${user.fullName}:`) ?? '';
+    if (!reason.trim()) return;
+    this.api.hr.disable(user.id, reason).subscribe({
+      next: () => { this.notice.set(`${user.fullName} disabled.`); this.load(); },
+      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not disable user.'),
+    });
+  }
+
+  export(): void { this.api.hr.export(this.activeFilter ?? undefined); }
+}

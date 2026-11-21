@@ -1,0 +1,79 @@
+<div class="min-h-screen bg-slate-50 lg:flex">
+  <aside class="fixed inset-y-0 left-0 z-40 w-72 -translate-x-full border-r border-slate-800/10 bg-slate-950 text-slate-300 transition lg:static lg:translate-x-0"
+         [class.translate-x-0]="mobileOpen()">
+    <div class="flex h-20 items-center gap-3 border-b border-white/10 px-6">
+      <div class="grid h-10 w-10 place-items-center rounded-2xl bg-teal-500 text-lg font-black text-slate-950">H</div>
+      <div>
+        <p class="text-sm font-bold tracking-wide text-white">HMS Clinic</p>
+        <p class="text-xs text-slate-400">Care operations</p>
+      </div>
+    </div>
+
+    <nav class="space-y-7 overflow-y-auto px-4 py-6" style="max-height: calc(100vh - 5rem)">
+      @for (section of sections(); track section.name) {
+        <div>
+          <p class="mb-2 px-3 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">{{ section.name }}</p>
+          <div class="space-y-1">
+            @for (item of section.items; track item.path) {
+              <a [routerLink]="item.path" routerLinkActive="bg-white/10 text-white shadow-inner"
+                 (click)="mobileOpen.set(false)"
+                 class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-300 transition hover:bg-white/5 hover:text-white">
+                <span class="w-5 text-center">{{ item.icon }}</span>
+                <span>{{ item.label }}</span>
+              </a>
+            }
+          </div>
+        </div>
+      }
+    </nav>
+  </aside>
+
+  @if (mobileOpen()) {
+    <button type="button" class="fixed inset-0 z-30 bg-slate-950/40 lg:hidden" aria-label="Close navigation"
+            (click)="mobileOpen.set(false)"></button>
+  }
+
+  <div class="min-w-0 flex-1">
+    <header class="sticky top-0 z-20 flex h-20 items-center justify-between border-b border-slate-200 bg-white/90 px-4 backdrop-blur sm:px-8">
+      <div class="flex items-center gap-3">
+        <button class="btn-ghost lg:hidden" type="button" (click)="mobileOpen.set(true)" aria-label="Open navigation">☰</button>
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide text-slate-400">Clinic workspace</p>
+          <p class="text-sm font-semibold text-slate-900">{{ auth.user()?.roleName }} · {{ auth.user()?.fullName }}</p>
+        </div>
+      </div>
+      <div class="relative flex items-center gap-3">
+        <span class="hidden rounded-full bg-teal-50 px-3 py-1.5 text-xs font-bold text-teal-700 sm:inline">
+          {{ auth.user()?.roleName }}
+        </span>
+        <button type="button" class="grid h-10 w-10 place-items-center rounded-full bg-slate-950 text-sm font-black text-white ring-2 ring-white hover:bg-slate-800"
+                (click)="toggleMenu()" aria-label="Open user menu" aria-haspopup="menu" [attr.aria-expanded]="menuOpen()">
+          {{ initials() }}
+        </button>
+        @if (menuOpen()) {
+          <div class="absolute right-0 top-12 z-30 w-44 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl" role="menu">
+            <button type="button" role="menuitem" class="block w-full px-4 py-2.5 text-left text-sm font-medium text-slate-700 hover:bg-slate-50" (click)="openProfile()">Profile</button>
+            <button type="button" role="menuitem" class="block w-full px-4 py-2.5 text-left text-sm font-medium text-rose-700 hover:bg-rose-50" (click)="requestLogout()">Log out</button>
+          </div>
+        }
+      </div>
+    </header>
+    <main class="p-4 sm:p-8">
+      <router-outlet />
+    </main>
+  </div>
+
+  @if (confirmLogout()) {
+    <div class="fixed inset-0 z-[90] grid place-items-center bg-slate-950/50 p-4">
+      <div class="card w-full max-w-sm p-6">
+        <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Sign out</p>
+        <h2 class="mt-2 text-xl font-black text-slate-950">End this session?</h2>
+        <p class="mt-2 text-sm leading-6 text-slate-500">You will be returned to the login screen. No unsaved changes will be submitted.</p>
+        <div class="mt-6 flex justify-end gap-3">
+          <button type="button" class="btn-secondary" (click)="cancelLogout()">Cancel</button>
+          <button type="button" class="btn-danger" (click)="performLogout()">Log out</button>
+        </div>
+      </div>
+    </div>
+  }
+</div>

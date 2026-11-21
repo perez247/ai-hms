@@ -1,0 +1,178 @@
+<div class="mx-auto max-w-6xl">
+  @if (loading()) { <div class="card p-10 text-center text-slate-500">Loading patient record…</div> }
+  @if (basic(); as basic) {
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <p class="text-xs font-bold uppercase tracking-[0.2em] text-teal-700">Patient record</p>
+        <h1 class="mt-2 text-3xl font-black tracking-tight text-slate-950">{{ basic.patient.fullName }}</h1>
+        <p class="mt-1 text-sm text-slate-500">Patient number <span class="font-bold text-slate-800">{{ basic.patient.patientNumber }}</span> · {{ basic.isPrivate ? 'Private Patient' : 'HMO Patient' }}</p>
+      </div>
+      <a routerLink="/patients/lookup" class="btn-secondary">Change patient</a>
+    </div>
+
+    @if (basic.isPrivate) {
+      <div class="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-900">Private Patient — no HMO assignments on file.</div>
+    }
+
+    <div class="mt-5 space-y-3">
+      <details class="card overflow-hidden" open>
+        <summary class="cursor-pointer list-none px-5 py-4 text-lg font-bold text-slate-950">Basic Information</summary>
+        <div class="border-t border-slate-100 p-5">
+          <div class="grid gap-5 md:grid-cols-2">
+            <div class="space-y-2 text-sm text-slate-700">
+              <p><span class="font-semibold">Patient number:</span> {{ basic.patient.patientNumber }}</p>
+              <p><span class="font-semibold">Sex:</span> {{ basic.patient.sex }}</p>
+              <p><span class="font-semibold">Date of birth:</span> {{ basic.patient.dateOfBirth | date:'mediumDate' }}</p>
+              <p><span class="font-semibold">Phone:</span> {{ basic.patient.phone || '—' }}</p>
+              <p><span class="font-semibold">Email:</span> {{ basic.patient.email || '—' }}</p>
+              <p><span class="font-semibold">Address:</span> {{ basic.patient.address || '—' }}</p>
+            </div>
+            <div class="space-y-2 text-sm text-slate-700">
+              <p><span class="font-semibold">Registration expires:</span> {{ basic.patient.currentRegistrationExpiresAt | date:'mediumDate' }}</p>
+              <p><span class="font-semibold">Next of kin:</span> {{ basic.patient.nextOfKinName || '—' }} · {{ basic.patient.nextOfKinPhone || '—' }}</p>
+              <p><span class="font-semibold">Status:</span> <span [class]="statusClass(basic.patient.status)">{{ basic.patient.status }}</span></p>
+            </div>
+          </div>
+
+        </div>
+      </details>
+
+      @if (canSee('hmo')) {
+        <details class="card overflow-hidden" (toggle)="onToggle('hmo', $event)">
+          <summary class="cursor-pointer list-none px-5 py-4 font-bold text-slate-900">HMO Coverage</summary>
+          <div class="border-t border-slate-100 p-5">
+            @if (sectionLoading() === 'hmo') { <p class="text-sm text-slate-500">Loading HMO assignments…</p> }
+            @if (hmoAssignments(); as assignments) {
+              <div class="flex items-center justify-between gap-3"><div><h2 class="font-bold text-slate-900">HMO assignments</h2><p class="text-xs text-slate-500">A patient may have multiple HMOs; each assignment has its own HMO member ID.</p></div>@if (auth.hasPermission('patients.hmo.manage')) { <span class="badge-blue">Editable</span> }</div>
+              @if (assignments.length === 0) {
+                <p class="mt-3 rounded-xl bg-slate-50 p-3 text-sm font-semibold text-slate-600">Private Patient — no HMO assignment.</p>
+              } @else {
+                <div class="mt-3 grid gap-3 md:grid-cols-2">
+                  @for (enrollment of assignments; track enrollment.id) {
+                    <div class="rounded-xl border border-slate-200 p-3">
+                      <div class="flex items-start justify-between gap-2"><div><p class="font-semibold text-slate-900">{{ enrollment.hmoName }}</p><p class="text-xs text-slate-500">HMO ID: {{ enrollment.hmoMemberId }}</p><p class="text-xs text-slate-500">{{ enrollment.planName || 'Standard plan' }} · valid {{ enrollment.validFrom | date:'mediumDate' }} to {{ enrollment.validTo ? (enrollment.validTo | date:'mediumDate') : 'open' }}</p></div><span [class]="enrollment.isActive ? 'badge-green' : 'badge-red'">{{ enrollment.isActive ? 'Active' : 'Inactive' }}</span></div>
+                      @if (enrollment.isPrimary) { <p class="mt-2 text-xs font-bold text-teal-700">Primary HMO</p> }
+                      @if (auth.hasPermission('patients.hmo.manage')) { <button type="button" class="mt-2 text-xs font-bold text-teal-700" (click)="editEnrollment(enrollment)">Edit assignment</button> }
+                    </div>
+                  }
+                </div>
+              }
+              @if (auth.hasPermission('patients.hmo.manage')) {
+                <form class="mt-4 grid gap-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-2" (ngSubmit)="saveHmo()">
+                  <div><label class="label">HMO</label><select class="input" [ngModel]="hmoForm().hmoCompanyId" (ngModelChange)="hmoForm.update(x => ({...x, hmoCompanyId: $event}))" name="hmoCompanyId"><option value="">Select HMO</option>@for (hmo of hmos(); track hmo.id) {<option [value]="hmo.id">{{ hmo.name }}</option>}</select></div>
+                  <div><label class="label">HMO member ID</label><input class="input" [ngModel]="hmoForm().hmoMemberId" (ngModelChange)="hmoForm.update(x => ({...x, hmoMemberId: $event}))" name="hmoMemberId" /></div>
+                  <div><label class="label">Plan</label><input class="input" [ngModel]="hmoForm().planName" (ngModelChange)="hmoForm.update(x => ({...x, planName: $event}))" name="planName" /></div>
+                  <div class="flex items-end gap-2"><label class="flex items-center gap-2 text-sm font-medium"><input type="checkbox" [ngModel]="hmoForm().isPrimary" (ngModelChange)="hmoForm.update(x => ({...x, isPrimary: $event}))" name="isPrimary" /> Primary</label></div>
+                  <div><label class="label">Valid from</label><input class="input" type="date" [ngModel]="hmoForm().validFrom" (ngModelChange)="hmoForm.update(x => ({...x, validFrom: $event}))" name="validFrom" /></div>
+                  <div><label class="label">Valid to</label><input class="input" type="date" [ngModel]="hmoForm().validTo" (ngModelChange)="hmoForm.update(x => ({...x, validTo: $event}))" name="validTo" /></div>
+                  <div class="flex gap-2 sm:col-span-2"><button class="btn-primary" type="submit">{{ editingEnrollment() ? 'Update HMO' : 'Add HMO' }}</button>@if (editingEnrollment()) {<button class="btn-secondary" type="button" (click)="resetHmoForm()">Cancel edit</button>}</div>
+                </form>
+              }
+            }
+          </div>
+        </details>
+      }
+
+      @if (canSee('encounters')) {
+        <details class="card overflow-hidden" (toggle)="onToggle('encounters', $event)">
+          <summary class="cursor-pointer list-none px-5 py-4 font-bold text-slate-900">Encounters</summary>
+          <div class="border-t border-slate-100 p-5">
+            @if (sectionLoading() === 'encounters') { <p class="text-sm text-slate-500">Loading encounters…</p> }
+            @if (encounters(); as rows) {
+              <div class="overflow-x-auto"><table class="table"><thead><tr><th>Encounter</th><th>Type</th><th>Doctor</th><th>Started</th><th>Status</th></tr></thead><tbody>
+                @for (row of rows; track row.id) {<tr><td>{{ row.encounterNumber }}</td><td>{{ row.type }}</td><td>{{ row.doctorName }}</td><td>{{ row.startedAt | date:'medium' }}</td><td><span [class]="statusClass(row.status)">{{ row.status }}</span></td></tr>}
+                @if (rows.length === 0) {<tr><td colspan="5" class="py-6 text-center text-slate-500">No encounters.</td></tr>}
+              </tbody></table></div>
+            }
+          </div>
+        </details>
+      }
+
+      @if (canSee('vitals')) {
+        <details class="card overflow-hidden" (toggle)="onToggle('vitals', $event)">
+          <summary class="cursor-pointer list-none px-5 py-4 font-bold text-slate-900">Vitals</summary>
+          <div class="border-t border-slate-100 p-5">
+            @if (sectionLoading() === 'vitals') { <p class="text-sm text-slate-500">Loading vitals…</p> }
+            @if (vitals(); as page) {
+              <div class="overflow-x-auto"><table class="table"><thead><tr><th>Recorded</th><th>Temp</th><th>BP</th><th>Pulse</th><th>SpO₂</th><th>Pain</th></tr></thead><tbody>
+                @for (vital of page.items; track vital.id) {<tr><td>{{ vital.recordedAt | date:'medium' }}</td><td>{{ vital.temperatureC ?? '—' }}</td><td>{{ vital.systolic ?? '—' }}/{{ vital.diastolic ?? '—' }}</td><td>{{ vital.pulse ?? '—' }}</td><td>{{ vital.spo2 ?? '—' }}%</td><td>{{ vital.painScore ?? '—' }}</td></tr>}
+                @if (page.items.length === 0) {<tr><td colspan="6" class="py-6 text-center text-slate-500">No vitals.</td></tr>}
+              </tbody></table></div>
+              <div class="mt-3 flex justify-end gap-2"><button class="btn-secondary" type="button" [disabled]="vitalsPage() <= 1" (click)="changeVitalsPage(-1)">Previous</button><button class="btn-secondary" type="button" [disabled]="vitalsPage() * page.pageSize >= page.total" (click)="changeVitalsPage(1)">Next</button></div>
+            }
+          </div>
+        </details>
+      }
+
+      @if (canSee('fitness')) {
+        <details class="card overflow-hidden" (toggle)="onToggle('fitness', $event)">
+          <summary class="cursor-pointer list-none px-5 py-4 font-bold text-slate-900">Fitness Clearances</summary>
+          <div class="border-t border-slate-100 p-5">
+            @if (sectionLoading() === 'fitness') { <p class="text-sm text-slate-500">Loading fitness records…</p> }
+            @if (fitness(); as rows) {
+              <div class="overflow-x-auto"><table class="table"><thead><tr><th>Certificate</th><th>Date</th><th>Doctor</th><th>Payment</th></tr></thead><tbody>
+                @for (row of rows; track row.id) {<tr><td>{{ row.certificateNumber }}</td><td>{{ row.fitnessDate | date:'mediumDate' }}</td><td><span [class]="statusClass(row.status)">{{ row.status }}</span></td><td><span [class]="statusClass(row.paymentStatus)">{{ row.paymentStatus }}</span></td></tr>}
+                @if (rows.length === 0) {<tr><td colspan="4" class="py-6 text-center text-slate-500">No fitness records.</td></tr>}
+              </tbody></table></div>
+            }
+          </div>
+        </details>
+      }
+
+      @if (canSee('investigations')) {
+        <details class="card overflow-hidden" (toggle)="onToggle('investigations', $event)">
+          <summary class="cursor-pointer list-none px-5 py-4 font-bold text-slate-900">Investigation Results</summary>
+          <div class="border-t border-slate-100 p-5">
+            @if (sectionLoading() === 'investigations') { <p class="text-sm text-slate-500">Loading investigations…</p> }
+            @if (investigations(); as rows) {
+              <div class="overflow-x-auto"><table class="table"><thead><tr><th>Investigation</th><th>Encounter</th><th>Status</th><th>Report</th></tr></thead><tbody>
+                @for (row of rows; track row.id) {<tr><td>{{ row.name }}</td><td>{{ row.encounterNumber }}</td><td>{{ row.status }}</td><td class="max-w-md truncate">{{ row.reportText || '—' }}</td></tr>}
+                @if (rows.length === 0) {<tr><td colspan="4" class="py-6 text-center text-slate-500">No investigations.</td></tr>}
+              </tbody></table></div>
+            }
+          </div>
+        </details>
+      }
+
+      @if (canSee('surgeries')) {
+        <details class="card overflow-hidden" (toggle)="onToggle('surgeries', $event)">
+          <summary class="cursor-pointer list-none px-5 py-4 font-bold text-slate-900">Surgeries</summary>
+          <div class="border-t border-slate-100 p-5">
+            @if (sectionLoading() === 'surgeries') { <p class="text-sm text-slate-500">Loading surgeries…</p> }
+            @if (surgeries(); as rows) {
+              <div class="overflow-x-auto"><table class="table"><thead><tr><th>Surgery</th><th>Encounter</th><th>Scheduled</th><th>Status</th><th>Report</th></tr></thead><tbody>
+                @for (row of rows; track row.id) {<tr><td>{{ row.name }}</td><td>{{ row.encounterNumber }}</td><td>{{ row.scheduledAt | date:'medium' }}</td><td>{{ row.status }}</td><td class="max-w-md truncate">{{ row.reportText || '—' }}</td></tr>}
+                @if (rows.length === 0) {<tr><td colspan="5" class="py-6 text-center text-slate-500">No surgeries.</td></tr>}
+              </tbody></table></div>
+            }
+          </div>
+        </details>
+      }
+
+      @if (canSee('finance')) {
+        <details class="card overflow-hidden" (toggle)="onToggle('finance', $event)">
+          <summary class="cursor-pointer list-none px-5 py-4 font-bold text-slate-900">Finance</summary>
+          <div class="border-t border-slate-100 p-5">
+            @if (sectionLoading() === 'finance') { <p class="text-sm text-slate-500">Loading finance…</p> }
+            @if (finance(); as money) {
+              <div class="grid gap-3 sm:grid-cols-3"><div class="rounded-xl bg-slate-50 p-3"><p class="stat-label">Billed</p><p class="mt-1 font-bold">{{ money.totalBilled | currency:'NGN':'symbol-narrow':'1.2-2' }}</p></div><div class="rounded-xl bg-slate-50 p-3"><p class="stat-label">Paid</p><p class="mt-1 font-bold">{{ money.totalPaid | currency:'NGN':'symbol-narrow':'1.2-2' }}</p></div><div class="rounded-xl bg-teal-50 p-3"><p class="stat-label text-teal-700">Balance</p><p class="mt-1 font-bold text-teal-900">{{ money.balance | currency:'NGN':'symbol-narrow':'1.2-2' }}</p></div></div>
+              @if (money.bills?.length) {<div class="mt-4 space-y-2">@for (bill of money.bills; track bill.id) {<div class="rounded-lg bg-slate-50 p-3 text-sm"><span class="font-semibold">{{ bill.billNumber }}</span> · {{ bill.status }} · {{ bill.balance | currency:'NGN':'symbol-narrow':'1.2-2' }}</div>}</div>}
+            } @else if (finance() === null) { <p class="text-sm text-slate-500">Finance details are not available for this role.</p> }
+          </div>
+        </details>
+      }
+
+      <details class="card overflow-hidden" (toggle)="onToggle('files', $event)">
+        <summary class="cursor-pointer list-none px-5 py-4 font-bold text-slate-900">Files</summary>
+        <div class="border-t border-slate-100 p-5">
+          @if (sectionLoading() === 'files') { <p class="text-sm text-slate-500">Loading files…</p> }
+          @if (files(); as rows) {
+            @for (file of rows; track file.id) {<div class="mb-2 flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3"><div><p class="text-sm font-semibold">{{ file.fileName }}</p><p class="text-xs text-slate-500">{{ file.contentType }} · {{ file.createdAt | date:'medium' }}</p></div><button class="btn-secondary" type="button" (click)="download(file.id, file.fileName)">Download</button></div>}
+            @if (rows.length === 0) {<p class="text-sm text-slate-500">No files uploaded.</p>}
+          }
+          @if (basic.canUploadFiles) {<div class="mt-3 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-3"><div class="flex-1"><label class="label">Upload file</label><input class="input" type="file" (change)="onFileSelected($event)" /></div><button class="btn-primary" type="button" (click)="uploadFile()">Upload</button></div>}
+        </div>
+      </details>
+    </div>
+  }
+</div>

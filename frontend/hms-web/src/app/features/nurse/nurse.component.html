@@ -1,0 +1,52 @@
+<div class="mx-auto max-w-7xl">
+  <p class="text-xs font-bold uppercase tracking-[0.2em] text-teal-700">Nursing</p>
+  <h1 class="mt-2 text-3xl font-black tracking-tight text-slate-950">Triage &amp; medication administration</h1>
+  <p class="mt-1 text-sm text-slate-500">Record vitals and every medication administered so Finance can bill inpatient medication.</p>
+  @if (notice()) { <div class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{{ notice() }}</div> }
+
+  <div class="card mt-5 flex flex-wrap items-end gap-3 p-4">
+    <div class="min-w-80 flex-1"><label class="label">Encounter ID</label><input class="input font-mono text-xs" [(ngModel)]="encounterId" name="encounterId" /></div>
+    <button class="btn-primary" type="button" (click)="load()">Load encounter</button>
+  </div>
+
+  @if (encounter(); as enc) {
+    <div class="mt-5 grid gap-5 lg:grid-cols-[1fr_380px]">
+      <div class="space-y-5">
+        <div class="card">
+          <div class="card-header flex flex-wrap items-center justify-between gap-2"><div><h2 class="text-lg font-bold">{{ enc.patientName }}</h2><p class="text-sm text-slate-500">{{ enc.encounterNumber }} · {{ enc.type }} · {{ enc.status }}</p></div><span [class]="enc.isEmergency ? 'badge-red' : 'badge-blue'">{{ enc.isEmergency ? 'Emergency' : 'Standard' }}</span></div>
+          <form class="card-body grid gap-4 sm:grid-cols-3" (ngSubmit)="saveVitals()">
+            <div><label class="label">Temperature °C</label><input class="input" type="number" step="0.1" [(ngModel)]="temperatureC" name="temperatureC" /></div>
+            <div><label class="label">Systolic</label><input class="input" type="number" [(ngModel)]="systolic" name="systolic" /></div>
+            <div><label class="label">Diastolic</label><input class="input" type="number" [(ngModel)]="diastolic" name="diastolic" /></div>
+            <div><label class="label">Pulse</label><input class="input" type="number" [(ngModel)]="pulse" name="pulse" /></div>
+            <div><label class="label">Respiratory rate</label><input class="input" type="number" [(ngModel)]="respiratoryRate" name="respiratoryRate" /></div>
+            <div><label class="label">SpO₂</label><input class="input" type="number" [(ngModel)]="spo2" name="spo2" /></div>
+            <div><label class="label">Weight kg</label><input class="input" type="number" step="0.1" [(ngModel)]="weightKg" name="weightKg" /></div>
+            <div><label class="label">Height cm</label><input class="input" type="number" step="0.1" [(ngModel)]="heightCm" name="heightCm" /></div>
+            <div><label class="label">Pain score 0–10</label><input class="input" type="number" min="0" max="10" [(ngModel)]="painScore" name="painScore" /></div>
+            <div class="sm:col-span-3"><label class="label">Notes</label><input class="input" [(ngModel)]="vitalsNotes" name="vitalsNotes" /></div>
+            <div class="sm:col-span-3 flex justify-end"><button class="btn-primary" type="submit">Save vitals</button></div>
+          </form>
+        </div>
+        <div class="card overflow-hidden">
+          <div class="card-header"><h2 class="font-bold">Vitals history</h2></div>
+          <div class="overflow-x-auto"><table class="table"><thead><tr><th>Recorded</th><th>Temp</th><th>BP</th><th>Pulse</th><th>SpO₂</th><th>Notes</th></tr></thead><tbody>
+            @for (vital of enc.vitals; track vital.id) {<tr><td>{{ vital.recordedAt | date:'medium' }}</td><td>{{ vital.temperatureC ?? '—' }}</td><td>{{ vital.systolic ?? '—' }}/{{ vital.diastolic ?? '—' }}</td><td>{{ vital.pulse ?? '—' }}</td><td>{{ vital.spo2 ?? '—' }}</td><td>{{ vital.notes || '—' }}</td></tr>}
+            @if (enc.vitals.length === 0) {<tr><td colspan="6" class="py-8 text-center text-slate-500">No vitals recorded.</td></tr>}
+          </tbody></table></div>
+        </div>
+      </div>
+      <div class="card h-fit">
+        <div class="card-header"><h2 class="font-bold">Record administration</h2><p class="text-xs text-slate-500">Use the dispense item ID returned by Pharmacy.</p></div>
+        <form class="card-body space-y-3" (ngSubmit)="administer()">
+          <div><label class="label">Dispense item ID</label><input class="input font-mono text-xs" [(ngModel)]="dispenseItemId" name="dispenseItemId" /></div>
+          <div><label class="label">Dose given</label><input class="input" type="number" step="0.01" [(ngModel)]="doseGiven" name="doseGiven" /></div>
+          <div><label class="label">Route</label><input class="input" [(ngModel)]="route" name="route" /></div>
+          <div><label class="label">Batch number</label><input class="input" [(ngModel)]="batchNumber" name="batchNumber" /></div>
+          <div><label class="label">Notes</label><input class="input" [(ngModel)]="administrationNotes" name="administrationNotes" /></div>
+          <button class="btn-primary w-full" type="submit">Record administration</button>
+        </form>
+      </div>
+    </div>
+  }
+</div>

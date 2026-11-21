@@ -1,0 +1,88 @@
+<div class="mx-auto max-w-7xl">
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <p class="text-xs font-bold uppercase tracking-[0.2em] text-teal-700">Pre-procedure clearance</p>
+      <h1 class="mt-2 text-3xl font-black tracking-tight text-slate-950">Fitness records</h1>
+      <p class="mt-1 text-sm text-slate-500">Reception basic info → Nurse findings → Doctor decision → Finance payment.</p>
+    </div>
+    @if (auth.hasPermission('fitness.export')) {<button class="btn-secondary" type="button" (click)="exportCsv()">Export CSV</button>}
+  </div>
+
+  <div class="mt-5 grid gap-5 lg:grid-cols-[380px_1fr]">
+    @if (auth.hasPermission('fitness.create')) {
+      <form class="card h-fit" (ngSubmit)="createBasic()">
+        <div class="card-header"><h2 class="font-bold">Basic information</h2><p class="text-xs text-slate-500">Receptionist or Nurse may start the record. Full name is required.</p></div>
+        <div class="card-body space-y-3">
+          <div><label class="label">Patient number (optional)</label><input class="input" [(ngModel)]="patientNumber" name="patientNumber" placeholder="e.g. PAT-2026-001234" /></div>
+          <div><label class="label">Full name</label><input class="input" [(ngModel)]="patientFullName" name="patientFullName" /></div>
+          <div class="grid grid-cols-2 gap-3"><div><label class="label">Age</label><input class="input" type="number" [(ngModel)]="patientAge" name="patientAge" /></div><div><label class="label">Sex</label><select class="input" [(ngModel)]="personSex" name="personSex"><option>Female</option><option>Male</option><option>Other</option><option>Unknown</option></select></div></div>
+          <div><label class="label">Phone</label><input class="input" [(ngModel)]="phone" name="phone" /></div>
+          <div><label class="label">Payment type</label><select class="input" [(ngModel)]="paymentType" name="paymentType"><option>Private</option><option>Hmo</option></select></div>
+          @if (paymentType === 'Hmo') {<div><label class="label">HMO</label><select class="input" [(ngModel)]="hmoCompanyId" name="hmoCompanyId"><option value="">Select HMO</option>@for (hmo of hmos(); track hmo.id) {<option [value]="hmo.id">{{ hmo.name }}</option>}</select></div>}
+          <div class="grid grid-cols-2 gap-3"><div><label class="label">Fitness date</label><input class="input" type="date" [(ngModel)]="fitnessDate" name="fitnessDate" /></div><div><label class="label">Expires</label><input class="input" type="date" [(ngModel)]="expiresAt" name="expiresAt" /></div></div>
+          <button class="btn-primary w-full" type="submit" [disabled]="busy()">{{ busy() ? 'Saving…' : 'Send to Nurse queue' }}</button>
+        </div>
+      </form>
+    }
+
+    <div class="space-y-5">
+      @if (reviewing(); as record) {
+        <div class="card">
+          <div class="card-header flex flex-wrap items-start justify-between gap-3"><div><h2 class="font-bold">Nurse review · {{ record.patientName }}</h2><p class="text-xs text-slate-500">{{ record.patientNumber || 'No patient number' }} · {{ record.paymentType }}</p></div><button class="btn-secondary" type="button" (click)="cancelNurseReview()">Close</button></div>
+          <div class="card-body space-y-4">
+            <div>
+              <div class="mb-2 flex items-center justify-between"><p class="stat-label">Investigation findings</p><span class="text-xs text-slate-500">Defaults: height, weight, BP, pulse</span></div>
+              <div class="space-y-2">
+                @for (finding of findings(); track $index) {
+                  <div class="grid grid-cols-[1fr_1.5fr_auto] items-center gap-2">
+                    <input class="input" [value]="finding.key" readonly />
+                    <input class="input" [value]="finding.value" (input)="setFindingValue($index, $any($event.target).value)" placeholder="Result" />
+                    <button type="button" class="text-xs font-bold text-rose-600" (click)="removeFinding($index)">Remove</button>
+                  </div>
+                }
+                <div class="grid grid-cols-2 gap-2"><input class="input" placeholder="Additional investigation" [(ngModel)]="findingKey" name="findingKey" /><input class="input" placeholder="Result" [(ngModel)]="findingValue" name="findingValue" /></div>
+                <button class="btn-secondary w-full" type="button" (click)="addFinding()">+ Add finding</button>
+              </div>
+            </div>
+            <div><label class="label">Signed certificate</label><input class="input" type="file" (change)="onCertificateSelected($event)" /></div>
+            <button class="btn-primary w-full" type="button" [disabled]="busy()" (click)="submitToDoctor()">{{ busy() ? 'Sending…' : 'Save findings, upload certificate and send to Doctor' }}</button>
+          </div>
+        </div>
+      }
+
+      <div class="card overflow-hidden">
+        <div class="card-header flex items-center justify-between"><h2 class="font-bold">Clearance queue</h2><button class="btn-secondary" type="button" (click)="load()">Refresh</button></div>
+        <div class="overflow-x-auto"><table class="table">
+          <thead><tr><th>Patient</th><th>Payment</th><th>Stage</th><th>Payment status</th><th>Certificate</th><th></th></tr></thead>
+          <tbody>
+            @for (item of items(); track item.id) {
+              <tr>
+                <td><p class="font-semibold">{{ item.patientName }}</p><p class="text-xs text-slate-500">{{ item.patientNumber || 'No patient number' }} · {{ item.patientAge }}y · {{ item.personSex }}</p></td>
+                <td><span class="badge-slate">{{ item.paymentType === 'Hmo' ? 'HMO' : 'Private' }}</span></td>
+                <td><span [class]="statusClass(item.status)">{{ item.status }}</span>@if (item.rejectionReason) {<p class="mt-1 text-xs text-rose-600">{{ item.rejectionReason }}</p>}</td>
+                <td><span [class]="statusClass(item.paymentStatus)">{{ item.paymentStatus }}</span></td>
+                <td>@if (item.certificateFileName) {<button class="text-xs font-bold text-teal-700" type="button" (click)="download(item)">Download</button>} @else {<span class="text-xs text-slate-400">None</span>}</td>
+                <td class="text-right">
+                  @if (item.status === 'AwaitingNurse' && auth.hasPermission('fitness.certificate.upload')) {
+                    <button class="btn-secondary" type="button" (click)="startNurseReview(item)">Nurse review</button>
+                  }
+                  @if (item.status === 'AwaitingDoctor' && auth.hasPermission('fitness.approve')) {
+                    <button class="btn-secondary mr-2" type="button" (click)="decide(item, true)">Approve</button>
+                    <button class="btn-danger" type="button" (click)="decide(item, false)">Reject</button>
+                  }
+                  @if (item.status === 'Approved' && item.paymentType === 'Private' && auth.hasPermission('fitness.payment')) {
+                    @if (item.paymentStatus === 'Paid') {<button class="btn-secondary" type="button" (click)="setPayment(item, false)">Mark unpaid</button>} @else {<button class="btn-primary" type="button" (click)="setPayment(item, true)">Mark paid</button>}
+                  }
+                  @if (item.status === 'Approved' && item.paymentType === 'Hmo' && auth.hasPermission('fitness.payment')) {
+                    <a class="text-xs font-bold text-teal-700" [routerLink]="['/hmos', item.hmoCompanyId]">Bulk pay in HMO profile</a>
+                  }
+                </td>
+              </tr>
+            }
+            @if (items().length === 0) {<tr><td colspan="6" class="py-10 text-center text-slate-500">No fitness records.</td></tr>}
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+  </div>
+</div>

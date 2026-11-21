@@ -1,0 +1,13 @@
+bin/
+obj/
+.vs/
+.vscode/
+node_modules/
+dist/
+.angular/
+*.user
+*.suo
+.DS_Store
+.env
+backend/Hms.Api/appsettings.Local.json
+App_Data/

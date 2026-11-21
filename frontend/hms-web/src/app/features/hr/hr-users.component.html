@@ -1,0 +1,42 @@
+<div class="mx-auto max-w-7xl">
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <div><p class="text-xs font-bold uppercase tracking-[0.2em] text-teal-700">HR office</p><h1 class="mt-2 text-3xl font-black tracking-tight text-slate-950">Users &amp; payroll</h1><p class="mt-1 text-sm text-slate-500">Create accounts, update salary and bank details, disable access and export active or disabled users.</p></div>
+    <div class="flex gap-2"><button class="btn-secondary" type="button" (click)="export()">Export CSV</button><button class="btn-primary" type="button" (click)="showCreate.set(!showCreate())">+ New user</button></div>
+  </div>
+  @if (notice()) { <div class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{{ notice() }}</div> }
+
+  @if (showCreate()) {
+    <form class="card mt-5" [formGroup]="form" (ngSubmit)="create()">
+      <div class="card-header"><h2 class="font-bold">Create user</h2></div>
+      <div class="card-body grid gap-4 md:grid-cols-3">
+        <div><label class="label">Full name</label><input class="input" formControlName="fullName" /></div>
+        <div><label class="label">Email</label><input class="input" type="email" formControlName="email" /></div>
+        <div><label class="label">Initial password</label><input class="input" formControlName="password" /></div>
+        <div><label class="label">Role</label><select class="input" formControlName="staffRole">@for (role of roles; track role) {<option [value]="role">{{ role }}</option>}</select></div>
+        <div><label class="label">Employee number</label><input class="input" formControlName="employeeNumber" /></div>
+        <div><label class="label">Phone</label><input class="input" formControlName="phone" /></div>
+        <div><label class="label">Salary</label><input class="input" type="number" formControlName="salaryAmount" /></div>
+        <div><label class="label">Bank</label><input class="input" formControlName="bankName" /></div>
+        <div><label class="label">Account name</label><input class="input" formControlName="bankAccountName" /></div>
+        <div><label class="label">Account number</label><input class="input" formControlName="bankAccountNumber" /></div>
+      </div>
+      <div class="flex justify-end gap-3 border-t border-slate-100 px-5 py-4"><button type="button" class="btn-secondary" (click)="showCreate.set(false)">Cancel</button><button class="btn-primary" type="submit">Create account</button></div>
+    </form>
+  }
+
+  <div class="card mt-5 overflow-hidden">
+    <div class="flex items-center justify-between border-b border-slate-100 p-4">
+      <select class="input w-44" [value]="activeFilter === null ? '' : activeFilter" (change)="activeFilter = $any($event.target).value === '' ? null : $any($event.target).value === 'true'; load()"><option value="true">Active</option><option value="false">Disabled</option><option value="">All</option></select>
+      <p class="text-sm text-slate-500">{{ users().length }} shown</p>
+    </div>
+    <div class="overflow-x-auto"><table class="table">
+      <thead><tr><th>User</th><th>Role</th><th>Salary</th><th>Bank</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        @for (user of users(); track user.id) {
+          <tr><td><p class="font-semibold">{{ user.fullName }}</p><p class="text-xs text-slate-500">{{ user.email }} · {{ user.employeeNumber || 'No employee no.' }}</p></td><td><span class="badge-blue">{{ user.staffRole }}</span></td><td>{{ user.salaryAmount | currency:'NGN':'symbol-narrow':'1.2-2' }}</td><td><p>{{ user.bankName || '—' }}</p><p class="text-xs text-slate-500">{{ user.bankAccountNumber || '' }}</p></td><td><span [class]="user.isActive ? 'badge-green' : 'badge-red'">{{ user.isActive ? 'Active' : 'Disabled' }}</span></td><td class="text-right"><a class="btn-secondary mr-2" [routerLink]="['/staff', user.id]">Profile</a>@if (user.isActive) {<button class="btn-danger" type="button" (click)="disable(user)">Disable</button>}</td></tr>
+        }
+        @if (users().length === 0) { <tr><td colspan="6" class="py-10 text-center text-slate-500">No users.</td></tr> }
+      </tbody>
+    </table></div>
+  </div>
+</div>

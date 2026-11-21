@@ -1,0 +1,28 @@
+<div class="mx-auto max-w-5xl">
+  <div class="flex items-start justify-between gap-4">
+    <div><a routerLink="/hmos" class="text-xs font-bold uppercase tracking-wide text-teal-700">← HMO partners</a><h1 class="mt-2 text-3xl font-black tracking-tight text-slate-950">{{ hmo()?.name || 'HMO profile' }}</h1><p class="mt-1 text-sm text-slate-500">{{ hmo()?.code }}</p></div>
+  </div>
+  <div class="mt-5 space-y-3">
+    <div class="card p-5"><p class="stat-label">Partner information</p><p class="mt-2 text-sm text-slate-700">{{ hmo()?.name }}</p><p class="text-xs text-slate-500">Code: {{ hmo()?.code }}</p></div>
+    <details class="card overflow-hidden" (toggle)="loadFitness($event)">
+      <summary class="cursor-pointer list-none px-5 py-4 font-bold text-slate-900">Fitness</summary>
+      <div class="border-t border-slate-100 p-5">
+        @if (loading()) { <p class="text-sm text-slate-500">Loading HMO fitness records…</p> }
+        @if (fitness(); as rows) {
+          @if (auth.hasPermission('fitness.payment')) {
+            <div class="mb-4 flex flex-wrap items-center justify-end gap-2"><button class="btn-primary" type="button" [disabled]="selected().size === 0" (click)="markPaid(true)">Mark selected paid</button><button class="btn-secondary" type="button" [disabled]="selected().size === 0" (click)="markPaid(false)">Mark selected unpaid</button></div>
+          }
+          <div class="overflow-x-auto"><table class="table">
+            <thead><tr><th></th><th>Patient</th><th>Certificate</th><th>Date</th><th>Doctor</th><th>Payment</th></tr></thead>
+            <tbody>
+              @for (item of rows; track item.id) {
+                <tr><td><input type="checkbox" [checked]="selected().has(item.id)" (change)="toggle(item.id, $any($event.target).checked)" /></td><td><p class="font-semibold">{{ item.patientName }}</p><p class="text-xs text-slate-500">{{ item.patientNumber || 'Unlinked patient' }}</p></td><td>{{ item.certificateNumber }}</td><td>{{ item.fitnessDate | date:'mediumDate' }}</td><td><span [class]="statusClass(item.status)">{{ item.status }}</span></td><td><span [class]="statusClass(item.paymentStatus)">{{ item.paymentStatus }}</span></td></tr>
+              }
+              @if (rows.length === 0) {<tr><td colspan="6" class="py-8 text-center text-slate-500">No approved fitness records for this HMO.</td></tr>}
+            </tbody>
+          </table></div>
+        }
+      </div>
+    </details>
+  </div>
+</div>

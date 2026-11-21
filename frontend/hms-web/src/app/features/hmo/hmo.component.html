@@ -1,0 +1,83 @@
+<div class="mx-auto max-w-7xl">
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <div><p class="text-xs font-bold uppercase tracking-[0.2em] text-teal-700">HMO office</p><h1 class="mt-2 text-3xl font-black tracking-tight text-slate-950">Authorisation &amp; coverage</h1><p class="mt-1 text-sm text-slate-500">Issue PA codes, adjust covered medications and approve the HMO portion. Finance still owns final payment approval.</p></div>
+    <button class="btn-secondary" type="button" (click)="load()">Refresh</button>
+  </div>
+  @if (notice()) { <div class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{{ notice() }}</div> }
+
+  <div class="mt-5 grid gap-5 xl:grid-cols-[1fr_520px]">
+    <div class="space-y-5">
+      <div class="card overflow-hidden">
+        <div class="card-header flex items-center justify-between"><h2 class="font-bold text-slate-900">HMO-pending bills</h2><span class="badge-amber">{{ pending().length }}</span></div>
+        <div class="overflow-x-auto"><table class="table">
+          <thead><tr><th>Bill</th><th>Patient</th><th>HMO</th><th class="text-right">HMO amount</th><th>PA</th></tr></thead>
+          <tbody>
+            @for (bill of pending(); track bill.id) {
+              <tr class="cursor-pointer" [class.bg-teal-50]="selected()?.id === bill.id" (click)="select(bill)">
+                <td><p class="font-semibold">{{ bill.billNumber }}</p><p class="text-xs text-slate-500">{{ bill.kind }}</p></td><td><p>{{ bill.patientName }}</p><p class="text-xs text-slate-500">{{ bill.patientNumber || "—" }}</p></td><td>{{ bill.hmoCompanyName }}</td>
+                <td class="text-right">{{ bill.hmoPayableTotal | currency:'NGN':'symbol-narrow':'1.2-2' }}</td>
+                <td>{{ bill.paCode || 'Missing' }}</td>
+              </tr>
+            }
+            @if (pending().length === 0) { <tr><td colspan="5" class="py-10 text-center text-slate-500">No bills awaiting HMO action.</td></tr> }
+          </tbody>
+        </table></div>
+      </div>
+
+      <div class="card overflow-hidden">
+        <div class="card-header"><h2 class="font-bold text-slate-900">Prior authorizations</h2></div>
+        <div class="overflow-x-auto"><table class="table">
+          <thead><tr><th>PA code</th><th>HMO</th><th>Status</th><th>Issued</th><th>Expires</th></tr></thead>
+          <tbody>
+            @for (pa of authorizations(); track pa.id) {
+              <tr><td class="font-mono text-xs">{{ pa.paCode }}</td><td>{{ pa.hmoName }}</td><td><span class="badge-blue">{{ pa.status }}</span></td><td>{{ pa.issuedAt | date:'medium' }}</td><td>{{ pa.expiresAt ? (pa.expiresAt | date:'mediumDate') : '—' }}</td></tr>
+            }
+            @if (authorizations().length === 0) { <tr><td colspan="5" class="py-10 text-center text-slate-500">No authorizations recorded.</td></tr> }
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+
+    @if (selected(); as bill) {
+      <div class="space-y-4">
+        <div class="card">
+          <div class="card-header"><h2 class="text-lg font-black text-slate-950">{{ bill.billNumber }}</h2><p class="text-sm text-slate-500">{{ bill.patientName }} · {{ bill.hmoCompanyName }}</p></div>
+          <div class="card-body space-y-4">
+            @if (!bill.paCode) {
+              <div class="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                <p class="text-sm font-semibold text-amber-900">PA code required</p>
+                <div class="mt-3 grid gap-2 sm:grid-cols-2">
+                  <input class="input" placeholder="PA code" [(ngModel)]="paCode" name="paCode" />
+                  <input class="input" type="date" [(ngModel)]="expiresAt" name="expiresAt" />
+                  <input class="input" type="number" placeholder="Approved amount" [(ngModel)]="approvedAmount" name="approvedAmount" />
+                  <input class="input" placeholder="Notes" [(ngModel)]="notes" name="notes" />
+                </div>
+                <button class="btn-primary mt-3 w-full" type="button" [disabled]="busy()" (click)="savePa()">Record PA</button>
+              </div>
+            } @else {
+              <div class="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900"><p class="font-semibold">PA {{ bill.paCode }}</p><p class="mt-1 text-xs">HMO approval: {{ bill.hmoApprovedAt ? (bill.hmoApprovedAt | date:'medium') : 'pending' }}</p></div>
+            }
+
+            <div>
+              <div class="mb-2 flex items-center justify-between"><p class="stat-label">Line coverage</p><button class="text-xs font-bold text-teal-700" type="button" (click)="saveCoverage()">Save coverage</button></div>
+              <div class="space-y-2">
+                @for (line of bill.lines; track line.id) {
+                  <div class="rounded-xl border border-slate-200 p-3">
+                    <div class="flex items-start justify-between gap-2"><p class="text-sm font-semibold text-slate-800">{{ line.description }}</p><label class="flex items-center gap-2 text-xs font-semibold text-slate-600"><input type="checkbox" [checked]="coverage()[line.id]?.covered" (change)="setCoverage(line.id, 'covered', $any($event.target).checked)" /> Covered</label></div>
+                    <div class="mt-2 grid grid-cols-2 gap-2">
+                      <div><label class="label">HMO amount</label><input class="input" type="number" [value]="coverage()[line.id]?.hmoAmount" (input)="setCoverage(line.id, 'hmoAmount', +$any($event.target).value)" /></div>
+                      <div><label class="label">Referral destination</label><input class="input" [value]="coverage()[line.id]?.referral" (input)="setCoverage(line.id, 'referral', $any($event.target).value)" /></div>
+                    </div>
+                  </div>
+                }
+              </div>
+            </div>
+
+            @if (bill.paCode && bill.status === 'HmoPending') { <button class="btn-primary w-full" type="button" [disabled]="busy()" (click)="approve()">Approve HMO portion</button> }
+            @if (bill.status === 'HmoApproved') { <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">HMO approved. Waiting for Finance final approval.</div> }
+          </div>
+        </div>
+      </div>
+    }
+  </div>
+</div>

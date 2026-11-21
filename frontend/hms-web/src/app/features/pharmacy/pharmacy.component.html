@@ -1,0 +1,99 @@
+<div class="mx-auto max-w-7xl">
+  <div class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <p class="text-xs font-bold uppercase tracking-[0.2em] text-teal-700">Pharmacy</p>
+      <h1 class="mt-2 text-3xl font-black tracking-tight text-slate-950">Prescription &amp; commit</h1>
+      <p class="mt-1 text-sm text-slate-500">Check stock, confirm HMO tariff, dispense available items and commit outpatient charges to Finance.</p>
+    </div>
+    <button type="button" class="btn-secondary" (click)="loadQueue()">Refresh queue</button>
+  </div>
+  @if (result(); as receipt) {
+    <div class="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p class="text-xs font-bold uppercase tracking-wide text-emerald-700">Dispense complete</p>
+          <p class="mt-1 text-lg font-bold text-emerald-950">Bill {{ receipt.billStatus }} · {{ receipt.committedToFinance ? 'committed to Finance' : 'added to inpatient accrual' }}</p>
+          <p class="mt-1 text-sm text-emerald-800">Patient {{ receipt.patientAmount | currency:'NGN':'symbol-narrow':'1.2-2' }} · HMO {{ receipt.hmoAmount | currency:'NGN':'symbol-narrow':'1.2-2' }}</p>
+        </div>
+        <span class="badge-green">{{ receipt.committedToFinance ? 'Finance queue' : 'Inpatient bill draft' }}</span>
+      </div>
+      @if (receipt.warnings.length) { <ul class="mt-3 list-disc space-y-1 pl-5 text-sm text-amber-800">@for (warning of receipt.warnings; track warning) {<li>{{ warning }}</li>}</ul> }
+    </div>
+  }
+
+  <div class="mt-5 grid gap-5 lg:grid-cols-[330px_1fr]">
+    <div class="card h-fit overflow-hidden">
+      <div class="card-header"><h2 class="font-bold text-slate-900">Current queue</h2><p class="text-xs text-slate-500">Prescriptions not fully dispensed</p></div>
+      <div class="max-h-[560px] divide-y divide-slate-100 overflow-y-auto">
+        @for (item of queue(); track item.encounterId) {
+          <button type="button" class="w-full px-4 py-3 text-left transition hover:bg-slate-50" [class.bg-teal-50]="encounterId() === item.encounterId" (click)="load(item.encounterId)">
+            <div class="flex items-center justify-between gap-2"><p class="font-semibold text-slate-900">{{ item.patientName }}</p><span [class]="item.isInpatient ? 'badge-amber' : 'badge-blue'">{{ item.isInpatient ? 'Inpatient' : 'Outpatient' }}</span></div>
+            <p class="mt-0.5 text-xs text-slate-500">{{ item.encounterNumber }} · {{ item.prescriptionStatus }}</p>
+            <p class="mt-1 text-xs text-slate-400">{{ item.createdAt | date:'short' }}</p>
+          </button>
+        }
+        @if (queue().length === 0) { <p class="px-4 py-8 text-center text-sm text-slate-500">No prescriptions waiting.</p> }
+      </div>
+    </div>
+
+    <div class="space-y-5">
+      <div class="card">
+        <div class="card-header flex flex-wrap items-center justify-between gap-3">
+          <div><h2 class="font-bold text-slate-900">Encounter lookup</h2><p class="text-xs text-slate-500">You can also paste an encounter ID from the doctor workspace.</p></div>
+          <div class="flex gap-2"><input class="input w-80 font-mono text-xs" placeholder="Encounter UUID" [value]="encounterId()" (input)="encounterId.set($any($event.target).value)" /><button class="btn-secondary" type="button" (click)="load()">Load</button></div>
+        </div>
+      </div>
+
+      @if (loading()) { <div class="card p-10 text-center text-slate-500">Loading prescription…</div> }
+
+      @if (prescription(); as rx) {
+        <div class="card overflow-hidden">
+          <div class="card-header flex flex-wrap items-center justify-between gap-3">
+            <div><h2 class="text-lg font-bold text-slate-900">{{ rx.patientName }}</h2><p class="text-sm text-slate-500">{{ rx.encounterNumber }} · {{ rx.isInpatient ? 'Inpatient' : 'Outpatient' }} · {{ rx.status }}</p></div>
+            <div class="text-right"><p class="text-xs font-bold uppercase tracking-wide text-slate-400">Estimated total</p><p class="text-xl font-black text-slate-900">{{ total() | currency:'NGN':'symbol-narrow':'1.2-2' }}</p></div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="table">
+              <thead><tr><th>Medication</th><th>Stock</th><th>Prescribed</th><th>Dispense</th><th class="text-right">Unit price</th><th class="text-right">HMO tariff</th></tr></thead>
+              <tbody>
+                @for (item of rx.items; track item.id) {
+                  <tr>
+                    <td><p class="font-semibold text-slate-900">{{ item.medicationName }} {{ item.strength }}</p><p class="text-xs text-slate-500">{{ item.form }} · {{ item.tariffCode || 'No tariff code' }}</p></td>
+                    <td><span [class]="item.stockOnHand > 0 ? 'badge-green' : 'badge-red'">{{ item.stockOnHand }} {{ item.unit }}</span></td>
+                    <td>{{ remaining(item) }} {{ item.unit }}</td>
+                    <td><input class="input w-24" type="number" min="0" [max]="remaining(item)" [value]="quantities()[item.id] ?? 0" (input)="setQuantity(item.id, $any($event.target).value, Math.min(remaining(item), item.stockOnHand))" /></td>
+                    <td class="text-right">{{ item.unitPrice | currency:'NGN':'symbol-narrow':'1.2-2' }}</td>
+                    <td class="text-right">@if (item.hmoUnitPrice !== null) {<span class="font-semibold text-teal-700">{{ item.hmoUnitPrice | currency:'NGN':'symbol-narrow':'1.2-2' }}</span><p class="text-xs text-slate-500">{{ item.hmoCoveragePercent }}% covered</p>} @else {<span class="text-slate-400">Cash price</span>}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          <div class="grid gap-4 border-t border-slate-100 bg-slate-50/60 p-5 md:grid-cols-3">
+            <div><p class="stat-label">Patient estimate</p><p class="mt-1 text-xl font-bold text-slate-900">{{ patientEstimate() | currency:'NGN':'symbol-narrow':'1.2-2' }}</p></div>
+            <div><p class="stat-label">HMO estimate</p><p class="mt-1 text-xl font-bold text-slate-900">{{ hmoEstimate() | currency:'NGN':'symbol-narrow':'1.2-2' }}</p></div>
+            <div class="flex items-end justify-end"><button brnButton class="btn-primary w-full md:w-auto" type="button" [disabled]="!canDispense()" (click)="openConfirm()">{{ rx.isInpatient ? 'Dispense to ward' : 'Commit to Finance' }}</button></div>
+          </div>
+        </div>
+        <p class="text-xs leading-5 text-slate-500">For outpatients, the system creates medication bill lines, confirms matched HMO tariffs and commits the bill to Finance. For inpatients, items are dispensed against the admission and charged when the Nurse records administration.</p>
+      }
+    </div>
+  </div>
+</div>
+
+@if (confirmOpen()) {
+  <div class="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4">
+    <div class="card w-full max-w-md p-6">
+      <p class="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Confirm dispense</p>
+      <h2 class="mt-2 text-2xl font-black text-slate-950">{{ prescription()?.isInpatient ? 'Dispense to ward' : 'Commit to Finance' }}</h2>
+      <p class="mt-2 text-sm leading-6 text-slate-500">
+        {{ selectedItems().length }} medication line(s), estimated total {{ total() | currency:'NGN':'symbol-narrow':'1.2-2' }}.
+        @if (!prescription()?.isInpatient) { This will commit the outpatient bill to Finance. } @else { This records ward stock and leaves the charge for Nurse administration. }
+      </p>
+      <div class="mt-6 flex justify-end gap-3">
+        <button type="button" class="btn-secondary" (click)="confirmOpen.set(false)">Cancel</button>
+        <button type="button" class="btn-primary" [disabled]="dispensing()" (click)="dispense()">{{ dispensing() ? 'Processing…' : 'Confirm' }}</button>
+      </div>
+    </div>
+  </div>
+}
