@@ -15,7 +15,7 @@ interface AppointmentRow {
   selector: 'app-appointments',
   imports: [ReactiveFormsModule, DatePipe],
   template: `
-    <div class="mx-auto max-w-7xl">
+    <div class="mx-auto px-4">
       <p class="text-xs font-bold uppercase tracking-[0.2em] text-teal-700">Reception</p>
       <h1 class="mt-2 text-3xl font-black tracking-tight text-slate-950">Appointments</h1>
       <p class="mt-1 text-sm text-slate-500">Book a doctor and automatically send the appointment fee to Finance.</p>
@@ -88,17 +88,14 @@ export class AppointmentsComponent implements OnInit {
   create(): void {
     if (this.form.invalid) return;
     const raw = this.form.getRawValue();
-    this.api.patients.getByNumber(raw.patientNumber.trim()).subscribe({
-      next: (patient) => this.api.post('/appointments', {
-        patientId: patient.id, doctorId: raw.doctorId,
+    this.api.post('/appointments', {
+        patientId: raw.patientNumber, doctorId: raw.doctorId,
         scheduledAt: new Date(raw.scheduledAt).toISOString(),
         durationMinutes: Number(raw.durationMinutes), reason: raw.reason || null,
       }).subscribe({
         next: () => { this.notice.set('Appointment booked. Appointment fee is committed to Finance.'); this.load(); this.form.reset({ durationMinutes: 30 }); },
         error: (err) => this.toast.error(err?.error?.detail ?? 'Could not book appointment.'),
-      }),
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Patient number not found.'),
-    });
+      });
   }
 
   checkIn(id: string): void {

@@ -68,13 +68,13 @@ export const routes: Routes = [
       {
         path: 'patients/lookup',
         canActivate: [accessGuard],
-        data: { permissions: ['patients.profile.read'] },
+        data: { roles: ['Receptionist', 'Doctor', 'Pharmacy', 'Finance', 'HmoOffice', 'HrOffice'], permissions: ['patients.profile.read'] },
         loadComponent: () => import('./features/patients/patient-lookup.component').then((m) => m.PatientLookupComponent),
       },
       {
         path: 'patients/:patientNumber',
         canActivate: [accessGuard],
-        data: { permissions: ['patients.profile.read'] },
+        data: { roles: ['Receptionist', 'Doctor', 'Pharmacy', 'Finance', 'HmoOffice', 'HrOffice'], permissions: ['patients.profile.read'] },
         loadComponent: () => import('./features/patients/patient-profile.component').then((m) => m.PatientProfileComponent),
       },
       {
@@ -88,6 +88,12 @@ export const routes: Routes = [
         canActivate: [accessGuard],
         data: { roles: ['Finance', 'HmoOffice'], permissions: ['fitness.read'] },
         loadComponent: () => import('./features/hmo-directory/hmo-profile.component').then((m) => m.HmoProfileComponent),
+      },
+      {
+        path: 'handover',
+        canActivate: [accessGuard],
+        data: { roles: ['Nurse'], strictRoles: ['Nurse'] },
+        loadComponent: () => import('./features/nurse/handover.component').then((m) => m.HandoverComponent),
       },
       {
         path: 'staff/me',

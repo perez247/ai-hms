@@ -238,13 +238,13 @@ public static class DbSeeder
 
         db.Vitals.Add(new Vital
         {
-            EncounterId = outpatientEncounter.Id, NurseId = nurseId, TemperatureC = 38.2m, Systolic = 118, Diastolic = 78,
+            PatientId = ada.Id, EncounterId = outpatientEncounter.Id, NurseId = nurseId, TemperatureC = 38.2m, Systolic = 118, Diastolic = 78,
             Pulse = 92, RespiratoryRate = 18, Spo2 = 98, WeightKg = 68m, HeightCm = 165m, PainScore = 4,
             Notes = "Febrile, alert", CreatedBy = nurseId
         });
         db.Vitals.Add(new Vital
         {
-            EncounterId = inpatientEncounter.Id, NurseId = nurseId, TemperatureC = 37.4m, Systolic = 126, Diastolic = 82,
+            PatientId = chinedu.Id, EncounterId = inpatientEncounter.Id, NurseId = nurseId, TemperatureC = 37.4m, Systolic = 126, Diastolic = 82,
             Pulse = 84, RespiratoryRate = 16, Spo2 = 99, WeightKg = 82m, HeightCm = 178m, PainScore = 6,
             Notes = "Abdominal tenderness", CreatedBy = nurseId
         });

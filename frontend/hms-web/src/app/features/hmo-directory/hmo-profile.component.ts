@@ -1,10 +1,11 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { ToastService } from '../../core/toast.service';
-import { FitnessCertificate, HmoOption } from '../../core/models';
+import { FitnessCertificate, HmoDirectoryEntry, HmoOption } from '../../core/models';
 
 /**
  * HMO profile. Fitness stays unloaded until its accordion opens. Finance can bulk-pay
@@ -12,7 +13,7 @@ import { FitnessCertificate, HmoOption } from '../../core/models';
  */
 @Component({
   selector: 'app-hmo-profile',
-  imports: [DatePipe, RouterLink],
+  imports: [DatePipe, RouterLink, FormsModule],
   templateUrl: './hmo-profile.component.html',
 })
 export class HmoProfileComponent implements OnInit {
@@ -21,9 +22,15 @@ export class HmoProfileComponent implements OnInit {
   private readonly toast = inject(ToastService);
   readonly auth = inject(AuthService);
   readonly hmo = signal<HmoOption | null>(null);
+  readonly directoryEntry = signal<HmoDirectoryEntry | null>(null);
   readonly fitness = signal<FitnessCertificate[] | null>(null);
   readonly selected = signal<Set<string>>(new Set());
   readonly loading = signal(false);
+  readonly tariffCode = signal('');
+  readonly tariffDescription = signal('');
+  readonly tariffUnitPrice = signal<number | null>(null);
+  readonly tariffCoverage = signal(100);
+  readonly savingTariff = signal(false);
 
   get hmoId(): string { return this.route.snapshot.paramMap.get('id') ?? ''; }
 
@@ -31,6 +38,39 @@ export class HmoProfileComponent implements OnInit {
     this.api.reference.hmos().subscribe({
       next: (hmos) => this.hmo.set(hmos.find((hmo) => hmo.id === this.hmoId) ?? null),
       error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load the HMO.'),
+    });
+    this.loadTariffs();
+  }
+
+  loadTariffs(): void {
+    this.api.hmo.directory().subscribe({
+      next: (entries) => this.directoryEntry.set(entries.find((entry) => entry.id === this.hmoId) ?? null),
+      error: () => this.directoryEntry.set(null),
+    });
+  }
+
+  get canManageTariffs(): boolean { return this.auth.hasPermission('hmo.tariff.manage'); }
+
+  saveTariff(): void {
+    const code = this.tariffCode().trim();
+    const unitPrice = this.tariffUnitPrice();
+    if (!code || unitPrice === null) { this.toast.error('Enter a medication code and negotiated unit price.'); return; }
+    this.savingTariff.set(true);
+    this.api.hmo.saveTariff(this.hmoId, {
+      name: 'Negotiated medication tariff', effectiveFrom: new Date().toISOString().slice(0, 10), effectiveTo: null,
+      items: [{
+        code, description: this.tariffDescription().trim() || code, category: 'Medication',
+        unit: 'unit', unitPrice: Number(unitPrice), coveragePercent: Number(this.tariffCoverage()),
+        requiresPriorAuthorization: false,
+      }],
+    }).subscribe({
+      next: () => {
+        this.savingTariff.set(false);
+        this.toast.success('Tariff saved. It is now the active tariff for this HMO.');
+        this.tariffCode.set(''); this.tariffDescription.set(''); this.tariffUnitPrice.set(null); this.tariffCoverage.set(100);
+        this.loadTariffs();
+      },
+      error: (err) => { this.savingTariff.set(false); this.toast.error(err?.error?.detail ?? 'Could not save the tariff.'); },
     });
   }
 

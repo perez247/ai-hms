@@ -130,3 +130,20 @@ public sealed record AdmissionDto(
     IReadOnlyList<Guid> EncounterIds);
 
 public sealed record DischargeRequestResult(Guid AdmissionId, Guid BillId, decimal PatientPayable, decimal HmoPayable, string BillStatus);
+
+/// <summary>A patient waiting for a doctor to open an encounter.</summary>
+public sealed record DoctorQueuePatientDto(
+    Guid SourceId,
+    Guid PatientId,
+    string PatientNumber,
+    string PatientName,
+    string ReferenceNumber,
+    string SourceKind,
+    DateTimeOffset Since,
+    string? HmoName,
+    bool HasOpenEncounter,
+    Guid? OpenEncounterId);
+
+public sealed record DoctorQueueDto(
+    IReadOnlyList<DoctorQueuePatientDto> AwaitingOutpatients,
+    IReadOnlyList<DoctorQueuePatientDto> ActiveInpatients);

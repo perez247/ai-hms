@@ -31,7 +31,7 @@ public sealed partial class BillingService
         if (type is not null) query = query.Where(x => x.EntryType == type);
         var total = await query.CountAsync(cancellationToken);
         var items = await query.OrderByDescending(x => x.OccurredAt).Skip((page - 1) * pageSize).Take(pageSize)
-            .Select(x => new AccountBookEntryDto(x.Id, x.EntryNumber, x.EntryType, x.Category, x.Amount, x.Currency, x.OccurredAt, x.Description, x.BillId, x.PaymentId))
+            .Select(x => new AccountBookEntryDto(x.Id, x.EntryNumber, x.EntryType, x.EntryType == AccountEntryType.Income ? "Credit" : "Debit", x.Category, x.Amount, x.Currency, x.OccurredAt, x.Description, x.Reference, x.BillId, x.PaymentId))
             .ToListAsync(cancellationToken);
         return new PagedResult<AccountBookEntryDto>(items, page, pageSize, total);
     }
@@ -47,12 +47,13 @@ public sealed partial class BillingService
             Category = request.Category,
             Amount = request.Amount,
             Description = request.Description,
+            Reference = request.Reference,
             OccurredAt = request.OccurredAt ?? DateTimeOffset.UtcNow,
             CreatedBy = user.RequireId()
         };
         db.AccountBookEntries.Add(entry);
         await db.SaveChangesAsync(cancellationToken);
         await audit.WriteAsync("accountbook.expense", nameof(AccountBookEntry), entry.Id.ToString(), after: new { entry.Amount, entry.Category }, cancellationToken: cancellationToken);
-        return new AccountBookEntryDto(entry.Id, entry.EntryNumber, entry.EntryType, entry.Category, entry.Amount, entry.Currency, entry.OccurredAt, entry.Description, null, null);
+        return new AccountBookEntryDto(entry.Id, entry.EntryNumber, entry.EntryType, "Debit", entry.Category, entry.Amount, entry.Currency, entry.OccurredAt, entry.Description, entry.Reference, null, null);
     }
 }

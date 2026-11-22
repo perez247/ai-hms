@@ -1,5 +1,6 @@
 using Hms.Application.Common;
 using Hms.Application.DTOs;
+using Hms.Domain.Enums;
 
 namespace Hms.Application.Services;
 
@@ -16,7 +17,7 @@ public interface IFitnessService
     Task<FitnessCertificateDto> SetPaymentAsync(Guid certificateId, FitnessPaymentRequest request, CancellationToken cancellationToken = default);
     Task<FitnessCertificateDto[]> SetHmoBatchPaymentAsync(FitnessBatchPaymentRequest request, CancellationToken cancellationToken = default);
     Task<FitnessCertificateDto> MarkPaidAsync(Guid certificateId, CancellationToken cancellationToken = default);
-    Task<PagedResult<FitnessCertificateDto>> SearchAsync(DateOnly? from, DateOnly? to, Guid? hmoCompanyId, string? search, int page, int pageSize, CancellationToken cancellationToken = default);
+    Task<PagedResult<FitnessCertificateDto>> SearchAsync(DateOnly? from, DateOnly? to, Guid? hmoCompanyId, string? search, int page, int pageSize, FitnessStatus? status = null, FitnessPaymentType? paymentType = null, FitnessPaymentStatus? paymentStatus = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<FitnessCertificateDto>> GetForPatientAsync(Guid patientId, CancellationToken cancellationToken = default);
-    Task<byte[]> ExportCsvAsync(DateOnly? from, DateOnly? to, Guid? hmoCompanyId, string? search, CancellationToken cancellationToken = default);
+    Task<byte[]> ExportCsvAsync(DateOnly? from, DateOnly? to, Guid? hmoCompanyId, string? search, FitnessStatus? status = null, FitnessPaymentType? paymentType = null, FitnessPaymentStatus? paymentStatus = null, CancellationToken cancellationToken = default);
 }

@@ -33,7 +33,9 @@ export class AuthService {
   /** App initializer: validates a stored token against /auth/me before rendering. */
   restoreSession(): Promise<void> {
     const token = this.token();
-    if (!token || this.user()) return Promise.resolve();
+    if (!token) return Promise.resolve();
+    // Always revalidate against the API; a cached role/permission snapshot may be stale
+    // after role or permission changes in the backend.
     return new Promise((resolve) => {
       this.http.get<MeResponse>(`${API_BASE}/auth/me`).subscribe({
         next: (me) => {
@@ -78,6 +80,11 @@ export class AuthService {
 
   hasAnyRole(roles: StaffRole[]): boolean {
     return roles.length === 0 || roles.some((role) => this.hasRole(role));
+  }
+
+  /** True only for the exact role; Admin is not treated as a member of other roles. */
+  hasExactRole(role: StaffRole): boolean {
+    return this.user()?.role === role;
   }
 
   homeForRole(role: StaffRole | undefined): string {

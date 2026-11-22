@@ -3,8 +3,10 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { API_BASE } from './api.config';
 import {
   AccountBookEntry, Bill, CreatePatientRequest, DispenseResult, DoctorOption, Encounter, Fee,
-  FitnessCertificate, HmoEnrollmentOption, HmoOption, PagedResult, Patient, PatientBasicProfile, PatientEncounterSummary, PatientFile, PatientFinance, PatientHmoEnrollment, PatientInvestigation, PatientProfile, PatientSurgery,
+  FitnessCertificate, HmoDirectoryEntry, HmoEnrollmentOption, HmoOption, HmoTariff, ManualBillResult,
+  DoctorQueue, NurseAppointment, NurseEncounter, NurseInpatient, PagedResult, Patient, PatientBasicProfile, PatientEncounterSummary, PatientFile, PatientFinance, PatientHmoEnrollment, PatientInvestigation, PatientProfile, PatientSurgery, PrescriptionPriceOptions, ShiftHandover,
   PatientSearchItem, PatientVitalsPage, PharmacyPrescription, PriorAuthorization, StaffProfile, UserRecord,
+  PatientDetails,
 } from './models';
 
 type Query = Record<string, string | number | boolean | null | undefined>;
@@ -48,7 +50,7 @@ export class ApiService {
     search: (search: string, page = 1, pageSize = 20) =>
       this.get<PagedResult<PatientSearchItem>>('/patients', { search, page, pageSize }),
     get: (id: string) => this.get<Patient>(`/patients/${id}`),
-    getByNumber: (patientNumber: string) => this.get<Patient>(`/patients/number/${encodeURIComponent(patientNumber)}`),
+    getByNumber: (patientNumber: string) => this.get<PatientDetails>(`/patients/number/${encodeURIComponent(patientNumber)}`),
     create: (body: CreatePatientRequest) => this.post<Patient>('/patients', body),
     renew: (id: string) => this.post<{ patientId: string; periodEnd: string; billId: string; feeAmount: number }>(`/patients/${id}/renew`, {}),
     addEnrollment: (id: string, body: unknown) => this.post<unknown>(`/patients/${id}/hmo-enrollments`, body),
@@ -90,6 +92,7 @@ export class ApiService {
   };
 
   clinical = {
+    doctorQueue: () => this.get<DoctorQueue>('/clinical/doctor-queue'),
     encounter: (id: string) => this.get<Encounter>(`/clinical/encounters/${id}`),
     admission: (id: string) => this.get<unknown>(`/clinical/admissions/${id}`),
     vitals: (body: unknown) => this.post<unknown>('/clinical/vitals', body),
@@ -104,11 +107,13 @@ export class ApiService {
 
   pharmacy = {
     prescription: (encounterId: string) => this.get<PharmacyPrescription>(`/pharmacy/encounters/${encounterId}/prescription`),
+    priceOptions: (encounterId: string) => this.get<PrescriptionPriceOptions>(`/pharmacy/encounters/${encounterId}/price-options`),
     dispense: (body: unknown) => this.post<DispenseResult>('/pharmacy/dispenses', body),
     confirmTariff: (billId: string, lineIds: string[]) => this.post<void>(`/pharmacy/bills/${billId}/confirm-tariff`, { billLineIds: lineIds }),
   };
 
   billing = {
+    create: (body: unknown) => this.post<ManualBillResult>('/billing/bills', body),
     search: (status?: string, patientId?: string, page = 1, pageSize = 25) =>
       this.get<PagedResult<Bill>>('/billing/bills', { status, patientId, page, pageSize }),
     get: (id: string) => this.get<Bill>(`/billing/bills/${id}`),
@@ -120,9 +125,14 @@ export class ApiService {
     accountBook: (from: string | null, to: string | null, type: string | null, page = 1) =>
       this.get<PagedResult<AccountBookEntry>>('/billing/account-book', { from, to, type, page, pageSize: 50 }),
     addExpense: (body: unknown) => this.post<AccountBookEntry>('/billing/account-book/expenses', body),
+    recordPurchase: (body: unknown) => this.post<AccountBookEntry>('/billing/account-book/purchases', body),
   };
 
   hmo = {
+    directory: () => this.get<HmoDirectoryEntry[]>('/hmo/companies'),
+    register: (body: unknown) => this.post<HmoDirectoryEntry>('/hmo/companies', body),
+    saveTariff: (hmoCompanyId: string, body: unknown) =>
+      this.post<HmoTariff>(`/hmo/companies/${hmoCompanyId}/tariffs`, body),
     authorizations: (patientId?: string, page = 1) => this.get<PagedResult<PriorAuthorization>>('/hmo/prior-authorizations', { patientId, page, pageSize: 25 }),
     saveAuthorization: (body: unknown) => this.post<PriorAuthorization>('/hmo/prior-authorizations', body),
     updateCoverage: (billId: string, body: unknown) => this.post<Bill>(`/hmo/bills/${billId}/coverage`, body),
@@ -130,8 +140,10 @@ export class ApiService {
   };
 
   fitness = {
-    search: (from: string | null, to: string | null, hmoCompanyId: string | null, search: string | null, page = 1) =>
-      this.get<PagedResult<FitnessCertificate>>('/fitness', { from, to, hmoCompanyId, search, page, pageSize: 25 }),
+    search: (from: string | null, to: string | null, hmoCompanyId: string | null, search: string | null, page = 1,
+      status?: string | null, paymentType?: string | null, paymentStatus?: string | null) =>
+      this.get<PagedResult<FitnessCertificate>>('/fitness',
+        { from, to, hmoCompanyId, search, status, paymentType, paymentStatus, page, pageSize: 25 }),
     create: (body: unknown) => this.post<FitnessCertificate>('/fitness', body),
     updateClinical: (id: string, investigationResults: Array<{ key: string; value: string }>) =>
       this.post<FitnessCertificate>(`/fitness/${id}/clinical`, { investigationResults }),
@@ -148,8 +160,22 @@ export class ApiService {
       this.post<FitnessCertificate[]>(`/fitness/hmo/${hmoCompanyId}/batch-payment`, { certificateIds, paid }),
     downloadCertificate: (id: string, fileName: string) => this.download(`/fitness/${id}/certificate`, undefined, fileName),
     markPaid: (id: string) => this.post<FitnessCertificate>(`/fitness/${id}/mark-paid`, {}),
-    export: (from: string | null, to: string | null, hmoCompanyId: string | null, search: string | null) =>
-      this.download('/fitness/export', { from, to, hmoCompanyId, search }, 'fitness.csv'),
+    export: (from: string | null, to: string | null, hmoCompanyId: string | null, search: string | null,
+      status?: string | null, paymentType?: string | null, paymentStatus?: string | null) =>
+      this.download('/fitness/export', { from, to, hmoCompanyId, search, status, paymentType, paymentStatus }, 'fitness.csv'),
+  };
+
+  nurse = {
+    appointments: () => this.get<NurseAppointment[]>('/nurse/appointments'),
+    inpatients: () => this.get<NurseInpatient[]>('/nurse/inpatients'),
+    vitals: (patientNumber: string, page = 1, pageSize = 10) =>
+      this.get<PatientVitalsPage>(`/nurse/patients/${encodeURIComponent(patientNumber)}/vitals`, { page, pageSize }),
+    recordVitals: (patientNumber: string, body: unknown) =>
+      this.post<unknown>(`/nurse/patients/${encodeURIComponent(patientNumber)}/vitals`, body),
+    encounters: (patientNumber: string) =>
+      this.get<NurseEncounter[]>(`/nurse/patients/${encodeURIComponent(patientNumber)}/encounters`),
+    handovers: (page = 1, pageSize = 25) => this.get<ShiftHandover[]>('/nurse/handovers', { page, pageSize }),
+    createHandover: (body: unknown) => this.post<ShiftHandover>('/nurse/handovers', body),
   };
 
   staff = {

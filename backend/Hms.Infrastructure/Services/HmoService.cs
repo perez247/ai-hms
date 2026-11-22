@@ -158,6 +158,112 @@ public sealed class HmoService(
         return new PagedResult<PriorAuthorizationDto>(rows.Select(x => Map(x, x.HmoCompany?.Name ?? "HMO")).ToList(), page, pageSize, total);
     }
 
+    public async Task<IReadOnlyList<HmoDirectoryEntryDto>> GetDirectoryAsync(CancellationToken cancellationToken = default)
+    {
+        var companies = await db.HmoCompanies.AsNoTracking()
+            .Include(x => x.Tariffs).ThenInclude(x => x.Items)
+            .OrderBy(x => x.Name).ToListAsync(cancellationToken);
+        return companies.Select(MapDirectory).ToList();
+    }
+
+    public async Task<HmoDirectoryEntryDto> RegisterAsync(RegisterHmoRequest request, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.Code) || string.IsNullOrWhiteSpace(request.Name))
+            throw new AppConflictException("HMO code and name are required.");
+        var code = request.Code.Trim().ToUpperInvariant();
+        if (await db.HmoCompanies.AnyAsync(x => x.Code == code, cancellationToken))
+            throw new AppConflictException($"An HMO with code {code} already exists.");
+
+        var company = new HmoCompany
+        {
+            Code = code,
+            Name = request.Name.Trim(),
+            ContactPerson = request.ContactPerson,
+            Email = request.Email,
+            Phone = request.Phone,
+            Address = request.Address,
+            ContractTerms = request.ContractTerms,
+            IsActive = true,
+            CreatedBy = user.RequireId()
+        };
+        db.HmoCompanies.Add(company);
+        await db.SaveChangesAsync(cancellationToken);
+
+        if (request.InitialTariff is not null)
+            await SaveTariffAsync(company.Id, request.InitialTariff, cancellationToken);
+
+        await audit.WriteAsync("hmo.registered", nameof(HmoCompany), company.Id.ToString(),
+            after: new { company.Code, company.Name }, cancellationToken: cancellationToken);
+        return await GetDirectoryEntryAsync(company.Id, cancellationToken);
+    }
+
+    public async Task<HmoTariffDto> SaveTariffAsync(Guid hmoCompanyId, CreateHmoTariffRequest request, CancellationToken cancellationToken = default)
+    {
+        if (!await db.HmoCompanies.AnyAsync(x => x.Id == hmoCompanyId, cancellationToken))
+            throw new AppNotFoundException("HMO not found.");
+        if (string.IsNullOrWhiteSpace(request.Name)) throw new AppConflictException("Tariff name is required.");
+        if (request.Items.Count == 0) throw new AppConflictException("Add at least one medication price to the tariff.");
+        if (request.Items.Any(x => x.UnitPrice < 0 || x.CoveragePercent is < 0 or > 100))
+            throw new AppConflictException("Tariff prices cannot be negative and coverage must be between 0 and 100 percent.");
+        if (request.EffectiveTo is not null && request.EffectiveTo < request.EffectiveFrom)
+            throw new AppConflictException("Tariff end date cannot precede its start date.");
+
+        var active = await db.HmoTariffs.Where(x => x.HmoCompanyId == hmoCompanyId && x.Status == TariffStatus.Active)
+            .ToListAsync(cancellationToken);
+        foreach (var previous in active)
+        {
+            previous.Status = TariffStatus.Superseded;
+            previous.EffectiveTo ??= request.EffectiveFrom.AddDays(-1);
+        }
+        var version = await db.HmoTariffs.Where(x => x.HmoCompanyId == hmoCompanyId).Select(x => (int?)x.Version).MaxAsync(cancellationToken) ?? 0;
+        var tariff = new HmoTariff
+        {
+            HmoCompanyId = hmoCompanyId,
+            Name = request.Name.Trim(),
+            Version = version + 1,
+            EffectiveFrom = request.EffectiveFrom,
+            EffectiveTo = request.EffectiveTo,
+            Status = TariffStatus.Active,
+            ImportedBy = user.RequireId()
+        };
+        foreach (var item in request.Items)
+        {
+            if (string.IsNullOrWhiteSpace(item.Code)) continue;
+            tariff.Items.Add(new HmoTariffItem
+            {
+                Code = item.Code.Trim(),
+                Description = string.IsNullOrWhiteSpace(item.Description) ? item.Code.Trim() : item.Description.Trim(),
+                Category = item.Category,
+                Unit = item.Unit,
+                UnitPrice = item.UnitPrice,
+                CoveragePercent = item.CoveragePercent,
+                RequiresPriorAuthorization = item.RequiresPriorAuthorization
+            });
+        }
+        db.HmoTariffs.Add(tariff);
+        await db.SaveChangesAsync(cancellationToken);
+        await audit.WriteAsync("hmo.tariff-saved", nameof(HmoTariff), tariff.Id.ToString(),
+            after: new { tariff.HmoCompanyId, tariff.Version, ItemCount = tariff.Items.Count }, cancellationToken: cancellationToken);
+        return MapTariff(tariff);
+    }
+
+    private async Task<HmoDirectoryEntryDto> GetDirectoryEntryAsync(Guid id, CancellationToken cancellationToken)
+    {
+        var company = await db.HmoCompanies.AsNoTracking().Include(x => x.Tariffs).ThenInclude(x => x.Items)
+            .SingleAsync(x => x.Id == id, cancellationToken);
+        return MapDirectory(company);
+    }
+
+    private static HmoDirectoryEntryDto MapDirectory(HmoCompany company) => new(
+        company.Id, company.Code, company.Name, company.IsActive,
+        company.Tariffs.OrderByDescending(x => x.Version).Select(MapTariff).ToList());
+
+    private static HmoTariffDto MapTariff(HmoTariff tariff) => new(
+        tariff.Id, tariff.HmoCompanyId, tariff.Name, tariff.Version, tariff.EffectiveFrom, tariff.EffectiveTo, tariff.Status,
+        tariff.Items.Where(x => x.IsActive).OrderBy(x => x.Code)
+            .Select(x => new HmoTariffItemDto(x.Id, x.Code, x.Description, x.Category, x.Unit,
+                x.UnitPrice, x.CoveragePercent, x.RequiresPriorAuthorization, x.IsActive)).ToList());
+
     private static PriorAuthorizationDto Map(PriorAuthorization pa, string hmoName) => new(
         pa.Id, pa.PatientId, pa.HmoCompanyId, hmoName, pa.EncounterId, pa.AdmissionId, pa.PaCode,
         pa.Status, pa.RequestedAt, pa.IssuedAt, pa.ExpiresAt, pa.ApprovedAmount, pa.Notes);

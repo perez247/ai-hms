@@ -7,6 +7,7 @@ namespace Hms.Application.Services;
 
 public interface IBillingService
 {
+    Task<ManualBillResultDto> CreateManualBillAsync(CreateManualBillRequest request, CancellationToken cancellationToken = default);
     Task<Bill> CreateAdministrativeBillAsync(Guid? patientId, BillKind kind, FeeCode feeCode, Guid sourceId,
         ChargeSourceType sourceType, string description, CancellationToken cancellationToken = default);
     Task<Bill> GetOrCreateEncounterBillAsync(Encounter encounter, CancellationToken cancellationToken = default);

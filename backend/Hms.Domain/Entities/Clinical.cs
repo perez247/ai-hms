@@ -82,7 +82,9 @@ public class Encounter : Entity
 
 public class Vital : Entity
 {
-    public Guid EncounterId { get; set; }
+    public Guid PatientId { get; set; }
+    public Patient? Patient { get; set; }
+    public Guid? EncounterId { get; set; }
     public Encounter? Encounter { get; set; }
     public Guid NurseId { get; set; }
     public DateTimeOffset RecordedAt { get; set; } = DateTimeOffset.UtcNow;

@@ -19,6 +19,7 @@ public interface IClinicalService
     Task<SurgerySummaryDto> CreateSurgeryAsync(CreateSurgeryRequest request, CancellationToken cancellationToken = default);
     Task<SurgerySummaryDto> CompleteSurgeryAsync(Guid surgeryId, CompleteSurgeryRequest request, CancellationToken cancellationToken = default);
     Task<Guid> RecordAdministrationAsync(RecordAdministrationRequest request, CancellationToken cancellationToken = default);
+    Task<DoctorQueueDto> GetDoctorQueueAsync(CancellationToken cancellationToken = default);
     Task<DischargeRequestResult> RequestDischargeAsync(RequestDischargeRequest request, CancellationToken cancellationToken = default);
     Task<AdmissionDto> CompleteDischargeAsync(Guid admissionId, CancellationToken cancellationToken = default);
 }

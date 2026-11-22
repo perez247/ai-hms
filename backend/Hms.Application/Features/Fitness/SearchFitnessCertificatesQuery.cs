@@ -7,14 +7,16 @@ using MediatR;
 
 namespace Hms.Application.Features.Fitness;
 
-public sealed record SearchFitnessCertificatesQuery(DateOnly? From, DateOnly? To, Guid? HmoCompanyId, string? Search, int Page, int PageSize)
+public sealed record SearchFitnessCertificatesQuery(DateOnly? From, DateOnly? To, Guid? HmoCompanyId, string? Search, int Page, int PageSize,
+    FitnessStatus? Status = null, FitnessPaymentType? PaymentType = null, FitnessPaymentStatus? PaymentStatus = null)
     : IRequest<PagedResult<FitnessCertificateDto>>;
 
 public sealed class SearchFitnessCertificatesQueryHandler(IFitnessService fitness)
     : IRequestHandler<SearchFitnessCertificatesQuery, PagedResult<FitnessCertificateDto>>
 {
     public Task<PagedResult<FitnessCertificateDto>> Handle(SearchFitnessCertificatesQuery request, CancellationToken cancellationToken) =>
-        fitness.SearchAsync(request.From, request.To, request.HmoCompanyId, request.Search, request.Page, request.PageSize, cancellationToken);
+        fitness.SearchAsync(request.From, request.To, request.HmoCompanyId, request.Search, request.Page, request.PageSize,
+            request.Status, request.PaymentType, request.PaymentStatus, cancellationToken);
 }
 
 public sealed class SearchFitnessCertificatesQueryValidator : AbstractValidator<SearchFitnessCertificatesQuery>

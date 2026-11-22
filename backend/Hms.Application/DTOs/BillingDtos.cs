@@ -64,5 +64,22 @@ public sealed record BillDto(
 public sealed record ApproveBillRequest(string? Notes);
 public sealed record NegotiateBillRequest(decimal DiscountAmount, string Reason);
 public sealed record PaymentRequest(decimal Amount, PaymentMethod Method, string? Reference, string? IdempotencyKey, string? Notes);
-public sealed record AccountBookEntryRequest(AccountEntryType EntryType, string Category, decimal Amount, string Description, DateTimeOffset? OccurredAt);
-public sealed record AccountBookEntryDto(Guid Id, string EntryNumber, AccountEntryType EntryType, string Category, decimal Amount, string Currency, DateTimeOffset OccurredAt, string Description, Guid? BillId, Guid? PaymentId);
+public sealed record AccountBookEntryRequest(AccountEntryType EntryType, string Category, decimal Amount, string Description, DateTimeOffset? OccurredAt, string? Reference);
+public sealed record AccountBookEntryDto(Guid Id, string EntryNumber, AccountEntryType EntryType, string Direction, string Category, decimal Amount, string Currency, DateTimeOffset OccurredAt, string Description, string? Reference, Guid? BillId, Guid? PaymentId);
+
+public sealed record CreateManualBillLineRequest(
+    BillLineCategory Category,
+    string Description,
+    decimal Quantity,
+    decimal UnitPrice,
+    string? TariffCode);
+
+/// <summary>Finance-created bill. Selecting an HMO prices medication lines from that HMO's active tariff.</summary>
+public sealed record CreateManualBillRequest(
+    Guid PatientId,
+    Guid? HmoCompanyId,
+    Guid? HmoEnrollmentId,
+    string? Description,
+    IReadOnlyList<CreateManualBillLineRequest> Lines);
+
+public sealed record ManualBillResultDto(BillDto Bill, IReadOnlyList<string> Warnings);

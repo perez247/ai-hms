@@ -3,6 +3,7 @@ import { CurrencyPipe } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { ApiService } from '../../core/api.service';
+import { PromptService } from '../../core/prompt.service';
 import { ToastService } from '../../core/toast.service';
 import { StaffRole, UserRecord } from '../../core/models';
 
@@ -16,6 +17,7 @@ export class HrUsersComponent implements OnInit {
   private readonly api = inject(ApiService);
   private readonly toast = inject(ToastService);
   private readonly fb = inject(FormBuilder);
+  private readonly prompts = inject(PromptService);
   readonly users = signal<UserRecord[]>([]);
   readonly notice = signal<string | null>(null);
   readonly showCreate = signal(false);
@@ -46,9 +48,16 @@ export class HrUsersComponent implements OnInit {
     });
   }
 
-  disable(user: UserRecord): void {
-    const reason = prompt(`Reason for disabling ${user.fullName}:`) ?? '';
-    if (!reason.trim()) return;
+  async disable(user: UserRecord): Promise<void> {
+    const values = await this.prompts.open({
+      title: `Disable ${user.fullName}?`,
+      description: 'The account will no longer be able to sign in. Provide an audit reason.',
+      fields: [{ key: 'reason', label: 'Reason', placeholder: 'Reason for disabling this account' }],
+      confirmLabel: 'Disable account',
+    });
+    if (!values) return;
+    const reason = (values['reason'] ?? '').trim();
+    if (!reason) return;
     this.api.hr.disable(user.id, reason).subscribe({
       next: () => { this.notice.set(`${user.fullName} disabled.`); this.load(); },
       error: (err) => this.toast.error(err?.error?.detail ?? 'Could not disable user.'),

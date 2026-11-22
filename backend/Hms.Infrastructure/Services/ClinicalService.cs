@@ -187,4 +187,61 @@ public sealed partial class ClinicalService(
             admission.BedNumber, admission.AdmittedAt, admission.DischargedAt, admission.Status,
             admission.DischargeSummary, billId, admission.Encounters.OrderBy(x => x.StartedAt).Select(x => x.Id).ToList());
     }
+
+    /// <summary>
+    /// Doctor worklist: checked-in appointments with no encounter yet, plus every non-discharged
+    /// admission. This is a read-only view; opening an encounter happens through the normal
+    /// encounter endpoints, which removes the patient from the queue on the next refresh.
+    /// </summary>
+    public async Task<DoctorQueueDto> GetDoctorQueueAsync(CancellationToken cancellationToken = default)
+    {
+        var outpatients = await db.Appointments.AsNoTracking()
+            .Where(x => x.Status == AppointmentStatus.CheckedIn
+                && !db.Encounters.Any(e => e.AppointmentId == x.Id && e.Status != EncounterStatus.Cancelled))
+            .OrderBy(x => x.CheckedInAt ?? x.ScheduledAt)
+            .Take(100)
+            .Select(x => new
+            {
+                x.Id,
+                x.PatientId,
+                x.Patient!.PatientNumber,
+                PatientName = (x.Patient.FirstName + " " + (x.Patient.MiddleName ?? "") + " " + x.Patient.LastName).Trim(),
+                x.AppointmentNumber,
+                Since = x.CheckedInAt ?? x.ScheduledAt,
+                HmoName = db.PatientHmoEnrollments
+                    .Where(e => e.PatientId == x.PatientId && e.IsActive)
+                    .OrderByDescending(e => e.IsPrimary)
+                    .Select(e => e.HmoCompany!.Name).FirstOrDefault()
+            })
+            .ToListAsync(cancellationToken);
+
+        var inpatients = await db.Admissions.AsNoTracking()
+            .Where(x => x.Status == AdmissionStatus.Active || x.Status == AdmissionStatus.PendingDischarge)
+            .OrderBy(x => x.AdmittedAt)
+            .Take(100)
+            .Select(x => new
+            {
+                x.Id,
+                x.PatientId,
+                x.Patient!.PatientNumber,
+                PatientName = (x.Patient.FirstName + " " + (x.Patient.MiddleName ?? "") + " " + x.Patient.LastName).Trim(),
+                x.AdmissionNumber,
+                x.AdmittedAt,
+                HmoName = db.PatientHmoEnrollments
+                    .Where(e => e.PatientId == x.PatientId && e.IsActive)
+                    .OrderByDescending(e => e.IsPrimary)
+                    .Select(e => e.HmoCompany!.Name).FirstOrDefault(),
+                OpenEncounterId = db.Encounters
+                    .Where(e => e.AdmissionId == x.Id && e.Status == EncounterStatus.Open)
+                    .Select(e => (Guid?)e.Id).FirstOrDefault()
+            })
+            .ToListAsync(cancellationToken);
+
+        return new DoctorQueueDto(
+            outpatients.Select(x => new DoctorQueuePatientDto(x.Id, x.PatientId, x.PatientNumber, x.PatientName,
+                x.AppointmentNumber, "Outpatient", x.Since, x.HmoName, false, null)).ToList(),
+            inpatients.Select(x => new DoctorQueuePatientDto(x.Id, x.PatientId, x.PatientNumber, x.PatientName,
+                x.AdmissionNumber, "Inpatient", x.AdmittedAt, x.HmoName,
+                x.OpenEncounterId is not null, x.OpenEncounterId)).ToList());
+    }
 }

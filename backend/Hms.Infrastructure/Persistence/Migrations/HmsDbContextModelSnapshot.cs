@@ -110,6 +110,11 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("payment_id");
 
+                    b.Property<string>("Reference")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("reference");
+
                     b.HasKey("Id")
                         .HasName("pk_account_book_entries");
 
@@ -660,7 +665,7 @@ namespace Hms.Infrastructure.Persistence.Migrations
 
                     b.ToTable("bills", "clinic", t =>
                         {
-                            t.HasCheckConstraint("ck_bill_context", "(kind = 'OutpatientEncounter' AND encounter_id IS NOT NULL) OR (kind = 'Emergency' AND encounter_id IS NOT NULL) OR (kind = 'InpatientAdmission' AND admission_id IS NOT NULL) OR (kind = 'Appointment' AND appointment_id IS NOT NULL) OR (kind = 'Registration' AND registration_period_id IS NOT NULL) OR (kind = 'FitnessCertificate' AND fitness_certificate_id IS NOT NULL)");
+                            t.HasCheckConstraint("ck_bill_context", "(kind = 'OutpatientEncounter' AND encounter_id IS NOT NULL) OR (kind = 'Emergency' AND encounter_id IS NOT NULL) OR (kind = 'InpatientAdmission' AND admission_id IS NOT NULL) OR (kind = 'Appointment' AND appointment_id IS NOT NULL) OR (kind = 'Registration' AND registration_period_id IS NOT NULL) OR (kind = 'FitnessCertificate' AND fitness_certificate_id IS NOT NULL) OR (kind = 'Manual')");
 
                             t.HasCheckConstraint("ck_bill_finance_approval", "status NOT IN ('Approved', 'Paid') OR finance_approved_at IS NOT NULL");
 
@@ -2723,6 +2728,43 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Hms.Domain.Entities.ShiftHandover", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ContentHtml")
+                        .IsRequired()
+                        .HasMaxLength(50000)
+                        .HasColumnType("character varying(50000)")
+                        .HasColumnName("content_html");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("NurseId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("nurse_id");
+
+                    b.Property<DateOnly>("ShiftDate")
+                        .HasColumnType("date")
+                        .HasColumnName("shift_date");
+
+                    b.HasKey("Id")
+                        .HasName("pk_shift_handovers");
+
+                    b.HasIndex("NurseId")
+                        .HasDatabaseName("ix_shift_handovers_nurse_id");
+
+                    b.HasIndex("ShiftDate", "CreatedAt")
+                        .HasDatabaseName("ix_shift_handovers_shift_date_created_at");
+
+                    b.ToTable("shift_handovers", "clinic");
+                });
+
             modelBuilder.Entity("Hms.Domain.Entities.StockMovement", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2951,7 +2993,7 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("diastolic");
 
-                    b.Property<Guid>("EncounterId")
+                    b.Property<Guid?>("EncounterId")
                         .HasColumnType("uuid")
                         .HasColumnName("encounter_id");
 
@@ -2972,6 +3014,10 @@ namespace Hms.Infrastructure.Persistence.Migrations
                     b.Property<int?>("PainScore")
                         .HasColumnType("integer")
                         .HasColumnName("pain_score");
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("patient_id");
 
                     b.Property<int?>("Pulse")
                         .HasColumnType("integer")
@@ -3011,6 +3057,9 @@ namespace Hms.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("EncounterId", "RecordedAt")
                         .HasDatabaseName("ix_vitals_encounter_id_recorded_at");
+
+                    b.HasIndex("PatientId", "RecordedAt")
+                        .HasDatabaseName("ix_vitals_patient_id_recorded_at");
 
                     b.ToTable("vitals", "clinic", t =>
                         {
@@ -4071,6 +4120,16 @@ namespace Hms.Infrastructure.Persistence.Migrations
                     b.Navigation("Patient");
                 });
 
+            modelBuilder.Entity("Hms.Domain.Entities.ShiftHandover", b =>
+                {
+                    b.HasOne("Hms.Infrastructure.Identity.AppUser", null)
+                        .WithMany()
+                        .HasForeignKey("NurseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_shift_handovers_users_nurse_id");
+                });
+
             modelBuilder.Entity("Hms.Domain.Entities.StockMovement", b =>
                 {
                     b.HasOne("Hms.Domain.Entities.Medication", "Medication")
@@ -4136,7 +4195,6 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .WithMany("Vitals")
                         .HasForeignKey("EncounterId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
                         .HasConstraintName("fk_vitals_encounters_encounter_id");
 
                     b.HasOne("Hms.Infrastructure.Identity.AppUser", null)
@@ -4146,7 +4204,16 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_vitals_users_nurse_id");
 
+                    b.HasOne("Hms.Domain.Entities.Patient", "Patient")
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_vitals_patients_patient_id");
+
                     b.Navigation("Encounter");
+
+                    b.Navigation("Patient");
                 });
 
             modelBuilder.Entity("Hms.Infrastructure.Identity.RefreshToken", b =>

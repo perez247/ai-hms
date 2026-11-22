@@ -14,8 +14,110 @@ public sealed partial class BillingService(
     HmsDbContext db,
     ICurrentUser user,
     IAuditWriter audit,
-    INumberGenerator numbers) : IBillingService
+    INumberGenerator numbers,
+    ITariffPricingService tariffs) : IBillingService
 {
+    /// <summary>
+    /// Finance-created bill. When an HMO is selected, medication lines are priced from the HMO's
+    /// active negotiated tariff; lines without a matched tariff fall back to the market price and
+    /// are reported as undercovered so Finance can see the gap.
+    /// </summary>
+    public async Task<ManualBillResultDto> CreateManualBillAsync(CreateManualBillRequest request, CancellationToken cancellationToken = default)
+    {
+        var patient = await db.Patients.SingleOrDefaultAsync(x => x.Id == request.PatientId, cancellationToken)
+            ?? throw new AppNotFoundException("Patient not found.");
+        if (request.Lines.Count == 0) throw new AppConflictException("Add at least one bill line.");
+        if (request.Lines.Any(x => x.Quantity <= 0 || x.UnitPrice < 0))
+            throw new AppConflictException("Line quantity must be positive and unit price cannot be negative.");
+
+        PatientHmoEnrollment? enrollment = null;
+        Guid? hmoCompanyId = null;
+        if (request.HmoEnrollmentId is not null)
+        {
+            enrollment = await db.PatientHmoEnrollments.Include(x => x.HmoCompany)
+                .SingleOrDefaultAsync(x => x.Id == request.HmoEnrollmentId && x.PatientId == patient.Id && x.IsActive, cancellationToken)
+                ?? throw new AppConflictException("The selected HMO enrollment is not active for this patient.");
+            hmoCompanyId = enrollment.HmoCompanyId;
+            if (request.HmoCompanyId is not null && request.HmoCompanyId != hmoCompanyId)
+                throw new AppConflictException("The selected HMO does not match the enrollment.");
+        }
+        else if (request.HmoCompanyId is not null)
+        {
+            var hmo = await db.HmoCompanies.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.Id == request.HmoCompanyId && x.IsActive, cancellationToken)
+                ?? throw new AppConflictException("The selected HMO is not registered or is inactive.");
+            hmoCompanyId = hmo.Id;
+            enrollment = await db.PatientHmoEnrollments.Include(x => x.HmoCompany)
+                .Where(x => x.PatientId == patient.Id && x.HmoCompanyId == hmo.Id && x.IsActive)
+                .OrderByDescending(x => x.IsPrimary).FirstOrDefaultAsync(cancellationToken);
+        }
+
+        var priceBook = hmoCompanyId is null
+            ? new Dictionary<string, HmoTariffItem>()
+            : await tariffs.ResolveAsync(hmoCompanyId.Value, cancellationToken);
+        var warnings = new List<string>();
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var bill = new Bill
+        {
+            BillNumber = await numbers.NextAsync("bill_number_seq", "BILL", cancellationToken),
+            PatientId = patient.Id,
+            Kind = BillKind.Manual,
+            PayerType = hmoCompanyId is null ? PayerType.SelfPay : PayerType.Hmo,
+            HmoCompanyId = hmoCompanyId,
+            HmoEnrollmentId = enrollment?.Id,
+            Status = BillStatus.Committed,
+            CommittedAt = DateTimeOffset.UtcNow,
+            CommittedBy = user.RequireId(),
+            CreatedBy = user.RequireId(),
+            Currency = "NGN"
+        };
+
+        foreach (var requestLine in request.Lines)
+        {
+            HmoTariffItem? tariffItem = null;
+            if (hmoCompanyId is not null && !string.IsNullOrWhiteSpace(requestLine.TariffCode))
+                priceBook.TryGetValue(requestLine.TariffCode.Trim(), out tariffItem);
+            if (hmoCompanyId is not null && tariffItem is null)
+                warnings.Add($"No active HMO tariff matched {requestLine.TariffCode ?? requestLine.Description}. Market price was used.");
+
+            var unitPrice = tariffItem?.UnitPrice ?? requestLine.UnitPrice;
+            var line = new BillLine
+            {
+                Category = requestLine.Category,
+                Description = requestLine.Description,
+                Quantity = requestLine.Quantity,
+                UnitPrice = unitPrice,
+                DiscountAmount = 0m,
+                TariffItemId = tariffItem?.Id,
+                TariffConfirmedAt = tariffItem is null ? null : DateTimeOffset.UtcNow,
+                TariffConfirmedBy = tariffItem is null ? null : user.RequireId(),
+                SourceType = ChargeSourceType.RegistrationPeriod,
+                SourceId = bill.Id,
+                SourceKey = $"manual-bill:{bill.Id}:{Guid.NewGuid():N}",
+                CreatedBy = user.RequireId()
+            };
+            BillingCalculator.SetLineAmounts(line, tariffItem?.CoveragePercent ?? 0m, tariffItem is not null);
+            bill.Lines.Add(line);
+        }
+
+        BillingCalculator.Recalculate(bill);
+        db.Bills.Add(bill);
+        db.BillStatusHistories.Add(new BillStatusHistory
+        {
+            BillId = bill.Id,
+            FromStatus = null,
+            ToStatus = BillStatus.Committed,
+            ActorId = user.Id,
+            Reason = request.Description ?? "Manual bill created by Finance"
+        });
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        await audit.WriteAsync("bill.manual-created", nameof(Bill), bill.Id.ToString(), patient.Id, null, bill.Id,
+            after: new { bill.BillNumber, bill.PayerType, bill.HmoCompanyId, bill.PatientPayableTotal, bill.HmoPayableTotal },
+            cancellationToken: cancellationToken);
+        return new ManualBillResultDto(await GetAsync(bill.Id, cancellationToken), warnings);
+    }
 
     public async Task<Bill> CreateAdministrativeBillAsync(
         Guid? patientId, BillKind kind, FeeCode feeCode, Guid sourceId,

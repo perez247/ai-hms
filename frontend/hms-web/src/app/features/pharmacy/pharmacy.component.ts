@@ -1,11 +1,12 @@
-import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { Component, OnInit, TemplateRef, ViewChild, ViewContainerRef, computed, inject, signal } from '@angular/core';
 import { CurrencyPipe, DatePipe } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { BrnButtonImports } from '@spartan-ng/brain/button';
+import { BrnDialogImports, BrnDialogRef, BrnDialogService } from '@spartan-ng/brain/dialog';
 import { finalize } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { ToastService } from '../../core/toast.service';
-import { DispenseResult, PharmacyPrescription, PharmacyQueueItem } from '../../core/models';
+import { DispenseResult, PharmacyPrescription, PharmacyQueueItem, PrescriptionPriceOptions } from '../../core/models';
 
 /**
  * Pharmacy commit-to-Finance screen. Quantities default to min(remaining, stock);
@@ -13,7 +14,7 @@ import { DispenseResult, PharmacyPrescription, PharmacyQueueItem } from '../../c
  */
 @Component({
   selector: 'app-pharmacy',
-  imports: [CurrencyPipe, DatePipe, BrnButtonImports],
+  imports: [CurrencyPipe, DatePipe, BrnButtonImports, BrnDialogImports],
   templateUrl: './pharmacy.component.html',
 })
 export class PharmacyComponent implements OnInit {
@@ -21,6 +22,11 @@ export class PharmacyComponent implements OnInit {
   private readonly api = inject(ApiService);
   private readonly toast = inject(ToastService);
   private readonly route = inject(ActivatedRoute);
+  private readonly dialogs = inject(BrnDialogService);
+  private readonly viewContainer = inject(ViewContainerRef);
+  private confirmRef?: BrnDialogRef<unknown>;
+
+  @ViewChild('confirmDialog') private confirmDialog?: TemplateRef<unknown>;
 
   readonly queue = signal<PharmacyQueueItem[]>([]);
   readonly prescription = signal<PharmacyPrescription | null>(null);
@@ -30,6 +36,10 @@ export class PharmacyComponent implements OnInit {
   readonly dispensing = signal(false);
   readonly confirmOpen = signal(false);
   readonly encounterId = signal('');
+  readonly priceOptions = signal<PrescriptionPriceOptions | null>(null);
+  readonly selectedPayer = signal<string>('Private');
+  readonly selectedOption = computed(() =>
+    this.priceOptions()?.options.find((option) => option.payerType === this.selectedPayer()) ?? null);
 
   // Only positive quantities are sent; estimates use HMO tariff prices where available.
   readonly selectedItems = computed(() => {
@@ -79,10 +89,27 @@ export class PharmacyComponent implements OnInit {
             defaults[item.id] = Math.max(0, Math.min(item.quantityPrescribed - item.quantityDispensed, item.stockOnHand));
           }
           this.quantities.set(defaults);
+          this.loadPriceOptions(encounterId);
         },
         error: (err) => { this.prescription.set(null); this.toast.error(err?.error?.detail ?? 'Could not load the prescription.'); },
       });
   }
+
+  /** Read-only comparison of private and patient-HMO prices; it never changes the encounter payer. */
+  loadPriceOptions(encounterId: string): void {
+    this.api.pharmacy.priceOptions(encounterId).subscribe({
+      next: (options) => {
+        this.priceOptions.set(options);
+        const current = options.options[0];
+        if (current && !options.options.some((option) => option.payerType === this.selectedPayer())) {
+          this.selectedPayer.set(current.payerType);
+        }
+      },
+      error: () => this.priceOptions.set(null),
+    });
+  }
+
+  selectPayer(payerType: string): void { this.selectedPayer.set(payerType); }
 
   setQuantity(itemId: string, value: string, max: number): void {
     const quantity = Math.max(0, Math.min(max, Number(value) || 0));
@@ -94,7 +121,17 @@ export class PharmacyComponent implements OnInit {
   }
 
   openConfirm(): void {
-    if (this.canDispense()) this.confirmOpen.set(true);
+    if (!this.canDispense() || !this.confirmDialog) return;
+    this.confirmOpen.set(true);
+    this.confirmRef?.close();
+    this.confirmRef = this.dialogs.open(this.confirmDialog, this.viewContainer, undefined,
+      { ariaLabel: 'Confirm dispense' });
+  }
+
+  closeConfirm(): void {
+    this.confirmRef?.close();
+    this.confirmRef = undefined;
+    this.confirmOpen.set(false);
   }
 
   /** Sends only selected lines and reloads the queue while retaining the receipt banner. */
@@ -110,13 +147,13 @@ export class PharmacyComponent implements OnInit {
       .pipe(finalize(() => this.dispensing.set(false)))
       .subscribe({
         next: (result) => {
-          this.confirmOpen.set(false);
+          this.closeConfirm();
           this.loadQueue();
           this.load(prescription.encounterId, false);
           this.result.set(result);
         },
         error: (err) => {
-          this.confirmOpen.set(false);
+          this.closeConfirm();
           this.toast.error(err?.error?.detail ?? 'Dispense failed.');
         },
       });

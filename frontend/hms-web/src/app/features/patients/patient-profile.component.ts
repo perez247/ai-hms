@@ -10,6 +10,7 @@ import {
   FitnessCertificate, HmoOption, PatientBasicProfile, PatientEncounterSummary, PatientFile,
   PatientFinance, PatientHmoEnrollment, PatientInvestigation, PatientSurgery, PatientVitalsPage,
 } from '../../core/models';
+import { bpClass, isVitalAbnormal, vitalClass } from '../../core/vitals.config';
 
 type SectionKey = 'hmo' | 'vitals' | 'fitness' | 'encounters' | 'investigations' | 'surgeries' | 'finance' | 'files';
 
@@ -36,6 +37,10 @@ export class PatientProfileComponent implements OnInit {
   readonly finance = signal<PatientFinance | null>(null);
   readonly files = signal<PatientFile[] | null>(null);
   readonly vitalsPage = signal(1);
+
+  readonly vitalClass = vitalClass;
+  readonly bpClass = bpClass;
+  readonly isVitalAbnormal = isVitalAbnormal;
   readonly loading = signal(false);
   readonly sectionLoading = signal<SectionKey | null>(null);
   readonly selectedFile = signal<File | null>(null);

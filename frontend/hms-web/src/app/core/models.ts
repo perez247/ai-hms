@@ -27,6 +27,31 @@ export interface PagedResult<T> {
 }
 
 export interface HmoOption { id: string; code: string; name: string; }
+export interface HmoTariffItem {
+  id: string; code: string; description: string; category: string; unit: string | null;
+  unitPrice: number; coveragePercent: number; requiresPriorAuthorization: boolean; isActive: boolean;
+}
+export interface HmoTariff {
+  id: string; hmoCompanyId: string; name: string; version: number; effectiveFrom: string;
+  effectiveTo: string | null; status: string; items: HmoTariffItem[];
+}
+export interface HmoDirectoryEntry {
+  id: string; code: string; name: string; isActive: boolean; tariffs: HmoTariff[];
+}
+export interface MedicationPriceOption {
+  payerType: string; hmoCompanyId: string | null; label: string; totalPrice: number;
+  hmoCoveredAmount: number; patientAmount: number; undercovered: boolean; warnings: string[];
+}
+export interface PrescriptionPriceOptions {
+  encounterId: string; marketTotal: number; options: MedicationPriceOption[];
+}
+export interface ManualBillResult { bill: Bill; warnings: string[]; }
+export interface DoctorQueuePatient {
+  sourceId: string; patientId: string; patientNumber: string; patientName: string;
+  referenceNumber: string; sourceKind: string; since: string; hmoName: string | null;
+  hasOpenEncounter: boolean; openEncounterId: string | null;
+}
+export interface DoctorQueue { awaitingOutpatients: DoctorQueuePatient[]; activeInpatients: DoctorQueuePatient[]; }
 export interface DoctorOption { id: string; fullName: string; }
 export interface HmoEnrollmentOption {
   id: string; hmoCompanyId: string; hmoName: string; hmoMemberId: string; planName: string | null; isPrimary: boolean;
@@ -43,6 +68,11 @@ export interface Patient {
   nextOfKinName: string | null; nextOfKinPhone: string | null;
   registrationDate: string; currentRegistrationExpiresAt: string; status: string;
   hmoEnrollments: PatientHmoEnrollment[];
+}
+
+export interface PatientDetails {
+  canUploadFiles: boolean; isPrivate: boolean;
+  patient: Patient;
 }
 
 export interface PatientSearchItem {
@@ -190,13 +220,39 @@ export interface Encounter {
   id: string; encounterNumber: string; patientId: string; patientName: string; doctorId: string;
   doctorName: string; type: string; status: string; isEmergency: boolean; startedAt: string;
   admissionId: string | null; billId: string | null;
-  vitals: Array<{ id: string; recordedAt: string; temperatureC: number | null; systolic: number | null; diastolic: number | null; pulse: number | null; spo2: number | null; notes: string | null }>;
+  vitals: Array<{ id: string; recordedAt: string; temperatureC: number | null; systolic: number | null; diastolic: number | null; pulse: number | null; respiratoryRate: number | null; spo2: number | null; painScore: number | null; weightKg: number | null; heightCm: number | null; notes: string | null }>;
   prescriptions: Array<{ id: string; status: string; createdAt: string; itemCount: number }>;
   investigations: Array<{ id: string; name: string; status: string; orderedAt: string }>;
   surgeries: Array<{ id: string; name: string; status: string; scheduledAt: string }>;
 }
 
 export interface AccountBookEntry {
-  id: string; entryNumber: string; entryType: string; category: string; amount: number;
-  currency: string; occurredAt: string; description: string; billId: string | null; paymentId: string | null;
+  id: string; entryNumber: string; entryType: string; direction: string; category: string; amount: number;
+  currency: string; occurredAt: string; description: string; reference: string | null;
+  billId: string | null; paymentId: string | null;
+}
+
+export interface NursePrescriptionItem {
+  prescriptionItemId: string; dispenseItemId: string | null; medicationName: string; dose: string;
+  route: string; frequency: string; quantityPrescribed: number; quantityDispensed: number; canAdminister: boolean;
+}
+
+export interface NurseEncounter {
+  id: string; encounterNumber: string; type: string; status: string; doctorName: string;
+  startedAt: string; admissionStatus: string | null; prescriptions: NursePrescriptionItem[];
+}
+
+export interface ShiftHandover {
+  id: string; nurseId: string; nurseName: string; shiftDate: string; contentHtml: string; createdAt: string;
+}
+
+export interface NurseAppointment {
+  id: string; appointmentNumber: string; patientId: string; patientNumber: string; patientName: string;
+  doctorId: string; doctorName: string; scheduledAt: string; status: string; reason: string | null;
+}
+
+export interface NurseInpatient {
+  admissionId: string; admissionNumber: string; patientId: string; patientNumber: string; patientName: string;
+  attendingDoctorName: string; wardType: string; bedNumber: string | null; admittedAt: string;
+  status: string; encounterIds: string[];
 }

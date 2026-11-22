@@ -94,9 +94,17 @@
           <div class="border-t border-slate-100 p-5">
             @if (sectionLoading() === 'vitals') { <p class="text-sm text-slate-500">Loading vitals…</p> }
             @if (vitals(); as page) {
-              <div class="overflow-x-auto"><table class="table"><thead><tr><th>Recorded</th><th>Temp</th><th>BP</th><th>Pulse</th><th>SpO₂</th><th>Pain</th></tr></thead><tbody>
-                @for (vital of page.items; track vital.id) {<tr><td>{{ vital.recordedAt | date:'medium' }}</td><td>{{ vital.temperatureC ?? '—' }}</td><td>{{ vital.systolic ?? '—' }}/{{ vital.diastolic ?? '—' }}</td><td>{{ vital.pulse ?? '—' }}</td><td>{{ vital.spo2 ?? '—' }}%</td><td>{{ vital.painScore ?? '—' }}</td></tr>}
-                @if (page.items.length === 0) {<tr><td colspan="6" class="py-6 text-center text-slate-500">No vitals.</td></tr>}
+              <div class="overflow-x-auto"><table class="table"><thead><tr><th>Recorded</th><th>Temp</th><th>BP</th><th>Pulse</th><th>RR</th><th>SpO₂</th><th>Pain</th></tr></thead><tbody>
+                @for (vital of page.items; track vital.id) {<tr>
+                  <td>{{ vital.recordedAt | date:'medium' }}</td>
+                  <td [class]="vitalClass(vital.temperatureC, 'temperatureC')">{{ vital.temperatureC ?? '—' }}</td>
+                  <td [class]="bpClass(vital)">{{ vital.systolic ?? '—' }}/{{ vital.diastolic ?? '—' }}</td>
+                  <td [class]="vitalClass(vital.pulse, 'pulse')">{{ vital.pulse ?? '—' }}</td>
+                  <td [class]="vitalClass(vital.respiratoryRate, 'respiratoryRate')">{{ vital.respiratoryRate ?? '—' }}</td>
+                  <td [class]="vitalClass(vital.spo2, 'spo2')">{{ vital.spo2 ?? '—' }}%</td>
+                  <td [class]="vitalClass(vital.painScore, 'painScore')">{{ vital.painScore ?? '—' }}</td>
+                </tr>}
+                @if (page.items.length === 0) {<tr><td colspan="7" class="py-6 text-center text-slate-500">No vitals.</td></tr>}
               </tbody></table></div>
               <div class="mt-3 flex justify-end gap-2"><button class="btn-secondary" type="button" [disabled]="vitalsPage() <= 1" (click)="changeVitalsPage(-1)">Previous</button><button class="btn-secondary" type="button" [disabled]="vitalsPage() * page.pageSize >= page.total" (click)="changeVitalsPage(1)">Next</button></div>
             }

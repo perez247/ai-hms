@@ -13,7 +13,8 @@ public sealed class PharmacyService(
     HmsDbContext db,
     ICurrentUser user,
     IAuditWriter audit,
-    IBillingService billing) : IPharmacyService
+    IBillingService billing,
+    ITariffPricingService tariffs) : IPharmacyService
 {
     public async Task<IReadOnlyList<PharmacyQueueItemDto>> GetQueueAsync(CancellationToken cancellationToken = default)
     {
@@ -50,7 +51,7 @@ public sealed class PharmacyService(
 
         var tariff = hmoCompanyId is null
             ? new Dictionary<string, HmoTariffItem>()
-            : await ActiveTariffItemsAsync(hmoCompanyId.Value, cancellationToken);
+            : await tariffs.ResolveAsync(hmoCompanyId.Value, cancellationToken);
 
         var items = prescription.Items.Select(item =>
         {
@@ -66,6 +67,68 @@ public sealed class PharmacyService(
         return new PharmacyPrescriptionDto(prescription.Id, encounter.Id, encounter.EncounterNumber,
             encounter.Patient?.FullName ?? "Unknown", encounter.Type == EncounterType.Inpatient,
             prescription.Status.ToString(), prescription.Notes, items);
+    }
+
+    /// <summary>
+    /// Compares the private market total with every HMO the patient belongs to. This is a read-only
+    /// pricing view: switching the option never changes the encounter payer or the prescription.
+    /// </summary>
+    public async Task<PrescriptionPriceOptionsDto> GetPriceOptionsAsync(Guid encounterId, CancellationToken cancellationToken = default)
+    {
+        var encounter = await db.Encounters.AsNoTracking()
+            .SingleOrDefaultAsync(x => x.Id == encounterId, cancellationToken)
+            ?? throw new AppNotFoundException("Encounter not found.");
+        var items = await db.Prescriptions.AsNoTracking()
+            .Include(x => x.Items).ThenInclude(x => x.Medication)
+            .Where(x => x.EncounterId == encounterId && x.Status != PrescriptionStatus.Cancelled)
+            .SelectMany(x => x.Items)
+            .ToListAsync(cancellationToken);
+
+        var marketTotal = items.Sum(x => x.QuantityPrescribed * (x.Medication?.UnitPrice ?? 0m));
+        var options = new List<MedicationPriceOptionDto>
+        {
+            new("Private", null, "Private (market price)", marketTotal, 0m, marketTotal, false, [])
+        };
+
+        var enrollments = await db.PatientHmoEnrollments.AsNoTracking().Include(x => x.HmoCompany)
+            .Where(x => x.PatientId == encounter.PatientId && x.IsActive)
+            .OrderByDescending(x => x.IsPrimary)
+            .ToListAsync(cancellationToken);
+
+        foreach (var enrollment in enrollments.Where(x => x.HmoCompany is not null).GroupBy(x => x.HmoCompanyId).Select(g => g.First()))
+        {
+            var priceBook = await tariffs.ResolveAsync(enrollment.HmoCompanyId, cancellationToken);
+            var total = 0m;
+            var hmoCovered = 0m;
+            var undercovered = false;
+            var warnings = new List<string>();
+            foreach (var item in items)
+            {
+                var medication = item.Medication;
+                if (medication is null) continue;
+                priceBook.TryGetValue(medication.TariffCode ?? string.Empty, out var tariffItem);
+                var marketPrice = medication.UnitPrice;
+                var unitPrice = tariffItem?.UnitPrice ?? marketPrice;
+                var amount = Math.Round(item.QuantityPrescribed * unitPrice, 2, MidpointRounding.AwayFromZero);
+                total += amount;
+                if (tariffItem is null)
+                {
+                    warnings.Add($"No active tariff for {medication.Name}; market price used.");
+                    continue;
+                }
+                var percent = Math.Clamp(tariffItem.CoveragePercent, 0m, 100m);
+                hmoCovered += Math.Round(amount * percent / 100m, 2, MidpointRounding.AwayFromZero);
+                if (tariffItem.UnitPrice < marketPrice)
+                {
+                    undercovered = true;
+                    warnings.Add($"{medication.Name}: negotiated {tariffItem.UnitPrice:N2} is below market {marketPrice:N2}; the difference is not HMO-covered.");
+                }
+            }
+            options.Add(new MedicationPriceOptionDto("Hmo", enrollment.HmoCompanyId,
+                enrollment.HmoCompany!.Name, total, hmoCovered, total - hmoCovered, undercovered, warnings));
+        }
+
+        return new PrescriptionPriceOptionsDto(encounterId, marketTotal, options);
     }
 
     /// <summary>Dispenses available quantities. Outpatient bills commit immediately; inpatient charges wait for Nurse administration.</summary>
@@ -105,7 +168,7 @@ public sealed class PharmacyService(
         if (encounter.HmoEnrollmentId is not null)
             hmoCompanyId = await db.PatientHmoEnrollments.AsNoTracking().Where(x => x.Id == encounter.HmoEnrollmentId)
                 .Select(x => (Guid?)x.HmoCompanyId).FirstOrDefaultAsync(cancellationToken);
-        var tariff = hmoCompanyId is null ? new Dictionary<string, HmoTariffItem>() : await ActiveTariffItemsAsync(hmoCompanyId.Value, cancellationToken);
+        var tariff = hmoCompanyId is null ? new Dictionary<string, HmoTariffItem>() : await tariffs.ResolveAsync(hmoCompanyId.Value, cancellationToken);
         var allTariffsResolved = true;
 
         foreach (var requestItem in request.Items)
@@ -207,19 +270,5 @@ public sealed class PharmacyService(
         }
         await db.SaveChangesAsync(cancellationToken);
         await audit.WriteAsync("bill.tariff-confirmed", nameof(Bill), bill.Id.ToString(), bill.PatientId, bill.EncounterId, bill.Id, cancellationToken: cancellationToken);
-    }
-
-    private async Task<Dictionary<string, HmoTariffItem>> ActiveTariffItemsAsync(Guid hmoCompanyId, CancellationToken cancellationToken)
-    {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var items = await db.HmoTariffItems.AsNoTracking()
-            .Include(x => x.HmoTariff)
-            .Where(x => x.HmoTariff != null && x.HmoTariff.HmoCompanyId == hmoCompanyId
-                && x.HmoTariff.Status == TariffStatus.Active && x.IsActive
-                && x.HmoTariff.EffectiveFrom <= today
-                && (x.HmoTariff.EffectiveTo == null || x.HmoTariff.EffectiveTo >= today))
-            .OrderByDescending(x => x.HmoTariff!.EffectiveFrom)
-            .ToListAsync(cancellationToken);
-        return items.GroupBy(x => x.Code).ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
     }
 }

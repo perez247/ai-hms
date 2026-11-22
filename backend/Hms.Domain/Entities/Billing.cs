@@ -189,6 +189,7 @@ public class AccountBookEntry : Entity
     public string Currency { get; set; } = "NGN";
     public DateTimeOffset OccurredAt { get; set; } = DateTimeOffset.UtcNow;
     public string Description { get; set; } = string.Empty;
+    public string? Reference { get; set; }
     public Guid? BillId { get; set; }
     public Bill? Bill { get; set; }
     public Guid? PaymentId { get; set; }

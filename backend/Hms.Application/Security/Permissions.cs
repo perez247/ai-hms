@@ -24,6 +24,7 @@ public static class Permissions
     public const string InvestigationsWrite = "investigations.write";
     public const string SurgeriesWrite = "surgeries.write";
     public const string MedicationAdminister = "medications.administer";
+    public const string NurseHandover = "nursing.handover";
     public const string DischargeInitiate = "discharge.initiate";
     public const string DischargeComplete = "discharge.complete";
 
@@ -45,6 +46,8 @@ public static class Permissions
     public const string HmoPriorAuthManage = "hmo.priorauth.manage";
     public const string HmoCoverageManage = "hmo.coverage.manage";
     public const string HmoApprove = "hmo.approve";
+    public const string HmoCompanyManage = "hmo.company.manage";
+    public const string HmoTariffManage = "hmo.tariff.manage";
 
     public const string FitnessRead = "fitness.read";
     public const string FitnessCreate = "fitness.create";

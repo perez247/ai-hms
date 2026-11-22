@@ -1,0 +1,38 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "C#: HMS Debug",
+      "type": "dotnet",
+      "request": "launch",
+      "projectPath": "${workspaceFolder}/backend/Hms.Api/Hms.Api.csproj",
+      "justMyCode": false,
+      "stopAtEntry": false,
+      "console": "integratedTerminal",
+      "logging": {
+        "exceptions": true
+      },
+      "exceptionOptions": [
+        {
+          "path": [
+            {
+              "names": [
+                "*"
+              ],
+              "namespaces": false
+            }
+          ],
+          "breakMode": "never"
+        }
+      ]
+    },
+    {
+      "name": "C#: HMS Run (no exception pauses)",
+      "type": "dotnet",
+      "request": "launch",
+      "projectPath": "${workspaceFolder}/backend/Hms.Api/Hms.Api.csproj",
+      "noDebug": true,
+      "console": "integratedTerminal"
+    }
+  ]
+}

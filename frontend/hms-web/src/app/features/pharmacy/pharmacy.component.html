@@ -1,4 +1,4 @@
-<div class="mx-auto max-w-7xl">
+<div class="mx-auto px-4">
   <div class="flex flex-wrap items-end justify-between gap-4">
     <div>
       <p class="text-xs font-bold uppercase tracking-[0.2em] text-teal-700">Pharmacy</p>
@@ -75,25 +75,54 @@
             <div class="flex items-end justify-end"><button brnButton class="btn-primary w-full md:w-auto" type="button" [disabled]="!canDispense()" (click)="openConfirm()">{{ rx.isInpatient ? 'Dispense to ward' : 'Commit to Finance' }}</button></div>
           </div>
         </div>
+        @if (priceOptions(); as options) {
+          <div class="card overflow-hidden">
+            <div class="card-header"><h2 class="font-bold text-slate-900">Coverage comparison</h2><p class="text-xs text-slate-500">Switch payer options to compare totals. This is read-only: the encounter payer is not changed here.</p></div>
+            <div class="flex flex-wrap gap-2 border-b border-slate-100 px-4 py-3">
+              @for (option of options.options; track option.payerType + (option.hmoCompanyId ?? '')) {
+                <button type="button" class="rounded-xl border px-3 py-2 text-left text-sm transition"
+                  [class]="selectedPayer() === option.payerType ? 'border-teal-600 bg-teal-50 text-teal-900' : 'border-slate-200 text-slate-600 hover:bg-slate-50'"
+                  (click)="selectPayer(option.payerType)">
+                  <span class="block font-bold">{{ option.label }}</span>
+                  <span class="block text-xs">{{ option.totalPrice | currency:'NGN':'symbol-narrow':'1.2-2' }}</span>
+                </button>
+              }
+            </div>
+            @if (selectedOption(); as option) {
+              <div class="grid gap-4 p-5 md:grid-cols-3">
+                <div><p class="stat-label">Total price</p><p class="mt-1 text-xl font-bold text-slate-900">{{ option.totalPrice | currency:'NGN':'symbol-narrow':'1.2-2' }}</p></div>
+                <div><p class="stat-label">HMO covered</p><p class="mt-1 text-xl font-bold text-teal-700">{{ option.hmoCoveredAmount | currency:'NGN':'symbol-narrow':'1.2-2' }}</p></div>
+                <div><p class="stat-label">Patient pays</p><p class="mt-1 text-xl font-bold text-slate-900">{{ option.patientAmount | currency:'NGN':'symbol-narrow':'1.2-2' }}</p></div>
+              </div>
+              @if (option.undercovered) {
+                <div class="mx-5 mb-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+                  <p class="font-bold">Negotiated price does not cover the current market price.</p>
+                  <ul class="mt-2 list-disc space-y-1 pl-5">@for (warning of option.warnings; track warning) {<li>{{ warning }}</li>}</ul>
+                </div>
+              } @else if (option.warnings.length) {
+                <ul class="mx-5 mb-4 list-disc space-y-1 pl-5 text-sm text-amber-700">@for (warning of option.warnings; track warning) {<li>{{ warning }}</li>}</ul>
+              }
+            }
+            <p class="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">Medication substitution must be requested through the doctor's encounter update; pharmacy does not silently change prescriptions.</p>
+          </div>
+        }
         <p class="text-xs leading-5 text-slate-500">For outpatients, the system creates medication bill lines, confirms matched HMO tariffs and commits the bill to Finance. For inpatients, items are dispensed against the admission and charged when the Nurse records administration.</p>
       }
     </div>
   </div>
 </div>
 
-@if (confirmOpen()) {
-  <div class="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4">
-    <div class="card w-full max-w-md p-6">
-      <p class="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Confirm dispense</p>
-      <h2 class="mt-2 text-2xl font-black text-slate-950">{{ prescription()?.isInpatient ? 'Dispense to ward' : 'Commit to Finance' }}</h2>
-      <p class="mt-2 text-sm leading-6 text-slate-500">
-        {{ selectedItems().length }} medication line(s), estimated total {{ total() | currency:'NGN':'symbol-narrow':'1.2-2' }}.
-        @if (!prescription()?.isInpatient) { This will commit the outpatient bill to Finance. } @else { This records ward stock and leaves the charge for Nurse administration. }
-      </p>
-      <div class="mt-6 flex justify-end gap-3">
-        <button type="button" class="btn-secondary" (click)="confirmOpen.set(false)">Cancel</button>
-        <button type="button" class="btn-primary" [disabled]="dispensing()" (click)="dispense()">{{ dispensing() ? 'Processing…' : 'Confirm' }}</button>
-      </div>
+<ng-template #confirmDialog let-close="close">
+  <div class="w-[min(480px,92vw)] rounded-2xl bg-white p-6 shadow-2xl" >
+    <p class="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Confirm dispense</p>
+    <h2 class="mt-2 text-2xl font-black text-slate-950" brnDialogTitle>{{ prescription()?.isInpatient ? 'Dispense to ward' : 'Commit to Finance' }}</h2>
+    <p class="mt-2 text-sm leading-6 text-slate-500" brnDialogDescription>
+      {{ selectedItems().length }} medication line(s), estimated total {{ total() | currency:'NGN':'symbol-narrow':'1.2-2' }}.
+      @if (!prescription()?.isInpatient) { This will commit the outpatient bill to Finance. } @else { This records ward stock and leaves the charge for Nurse administration. }
+    </p>
+    <div class="mt-6 flex justify-end gap-3">
+      <button type="button" class="btn-secondary" (click)="closeConfirm()">Cancel</button>
+      <button type="button" class="btn-primary" [disabled]="dispensing()" (click)="dispense()">{{ dispensing() ? 'Processing…' : 'Confirm' }}</button>
     </div>
   </div>
-}
+</ng-template>

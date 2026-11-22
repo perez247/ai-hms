@@ -23,6 +23,7 @@ public sealed partial class ClinicalService
 
         var vital = new Vital
         {
+            PatientId = encounter.PatientId,
             EncounterId = encounter.Id,
             NurseId = user.RequireId(),
             TemperatureC = request.TemperatureC,

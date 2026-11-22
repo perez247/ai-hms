@@ -152,6 +152,7 @@ public sealed partial class BillingService
             Amount = request.Amount,
             Currency = bill.Currency,
             Description = $"Payment for {bill.BillNumber}",
+            Reference = request.Reference,
             BillId = bill.Id,
             PaymentId = payment.Id,
             CreatedBy = user.RequireId()

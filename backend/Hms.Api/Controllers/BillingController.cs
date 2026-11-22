@@ -14,6 +14,11 @@ namespace Hms.Api.Controllers;
 /// <summary>Finance reads, HMO routing, negotiation, payments and final approval.</summary>
 public sealed class BillingController(IMediator mediator) : ControllerBase
 {
+    [HttpPost("bills")]
+    [Authorize(Policy = Permissions.BillingApprove)]
+    public async Task<ActionResult<ManualBillResultDto>> CreateBill(CreateManualBillRequest request, CancellationToken cancellationToken) =>
+        Ok(await mediator.Send(new CreateManualBillCommand(request), cancellationToken));
+
     [HttpGet("bills")]
     [Authorize(Policy = Permissions.BillingRead)]
     public async Task<IActionResult> Search([FromQuery] BillStatus? status, [FromQuery] Guid? patientId,
@@ -56,4 +61,9 @@ public sealed class BillingController(IMediator mediator) : ControllerBase
     [Authorize(Policy = Permissions.AccountBookWrite)]
     public async Task<ActionResult<AccountBookEntryDto>> AddExpense(AccountBookEntryRequest request, CancellationToken cancellationToken) =>
         Ok(await mediator.Send(new AddExpenseCommand(request), cancellationToken));
+
+    [HttpPost("account-book/purchases")]
+    [Authorize(Policy = Permissions.AccountBookWrite)]
+    public async Task<ActionResult<AccountBookEntryDto>> RecordPurchase(AccountBookEntryRequest request, CancellationToken cancellationToken) =>
+        Ok(await mediator.Send(new RecordPurchaseCommand(request), cancellationToken));
 }

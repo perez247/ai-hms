@@ -8,11 +8,9 @@ namespace Hms.UnitTests;
 public sealed class FitnessStateMachineTests
 {
     [Fact]
-    public void Submission_requires_uploaded_certificate()
+    public void Submission_does_not_require_an_uploaded_certificate()
     {
         var record = new FitnessCertificate { Status = FitnessStatus.AwaitingNurse };
-        Assert.Throws<DomainRuleException>(() => FitnessStateMachine.EnsureCanSubmit(record));
-        record.CertificateStorageKey = "fitness/cert.pdf";
         FitnessStateMachine.EnsureCanSubmit(record);
     }
 

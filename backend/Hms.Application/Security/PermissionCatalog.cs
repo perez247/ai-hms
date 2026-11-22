@@ -15,13 +15,13 @@ public static class PermissionCatalog
         Permissions.VitalsRead, Permissions.VitalsWrite,
         Permissions.EncountersRead, Permissions.EncountersWrite, Permissions.PrescriptionsWrite,
         Permissions.InvestigationsWrite, Permissions.SurgeriesWrite, Permissions.MedicationAdminister,
-        Permissions.DischargeInitiate, Permissions.DischargeComplete,
+        Permissions.DischargeInitiate, Permissions.DischargeComplete, Permissions.NurseHandover,
         Permissions.PharmacyRead, Permissions.PharmacyDispense, Permissions.PharmacyCommit,
         Permissions.PharmacyTariffConfirm, Permissions.PharmacyStockManage,
         Permissions.BillingRead, Permissions.BillingApprove, Permissions.BillingNegotiate,
         Permissions.BillingPayment, Permissions.AccountBookRead, Permissions.AccountBookWrite,
         Permissions.HmoReceivableManage, Permissions.HmoRead, Permissions.HmoPriorAuthManage,
-        Permissions.HmoCoverageManage, Permissions.HmoApprove,
+        Permissions.HmoCoverageManage, Permissions.HmoApprove, Permissions.HmoCompanyManage, Permissions.HmoTariffManage,
         Permissions.FitnessRead, Permissions.FitnessCreate, Permissions.FitnessApprove, Permissions.FitnessCertificateUpload, Permissions.FitnessPayment, Permissions.FitnessExport,
         Permissions.HrUsersRead, Permissions.HrUsersManage, Permissions.HrPayrollManage, Permissions.HrExport,
         Permissions.AdminFeesManage, Permissions.AdminHmosManage, Permissions.AdminTariffsManage,
@@ -40,7 +40,8 @@ public static class PermissionCatalog
             [StaffRole.Nurse] =
             [
                 Permissions.PatientsRead, Permissions.PatientsProfileRead, Permissions.VitalsRead, Permissions.VitalsWrite,
-                Permissions.EncountersRead, Permissions.PharmacyRead, Permissions.MedicationAdminister,
+                Permissions.AppointmentsRead, Permissions.EncountersRead, Permissions.PharmacyRead,
+                Permissions.MedicationAdminister, Permissions.NurseHandover,
                 Permissions.FitnessRead, Permissions.FitnessCreate, Permissions.FitnessCertificateUpload,
                 Permissions.PatientFilesUpload
             ],
@@ -69,7 +70,8 @@ public static class PermissionCatalog
             [
                 Permissions.PatientsRead, Permissions.PatientsProfileRead, Permissions.EncountersRead, Permissions.PharmacyRead,
                 Permissions.BillingRead, Permissions.HmoRead, Permissions.HmoPriorAuthManage,
-                Permissions.HmoCoverageManage, Permissions.HmoApprove, Permissions.FitnessRead
+                Permissions.HmoCoverageManage, Permissions.HmoApprove, Permissions.HmoCompanyManage,
+                Permissions.HmoTariffManage, Permissions.FitnessRead
             ],
             [StaffRole.HrOffice] =
             [

@@ -7,13 +7,15 @@ using MediatR;
 
 namespace Hms.Application.Features.Fitness;
 
-public sealed record ExportFitnessCertificatesQuery(DateOnly? From, DateOnly? To, Guid? HmoCompanyId, string? Search) : IRequest<byte[]>;
+public sealed record ExportFitnessCertificatesQuery(DateOnly? From, DateOnly? To, Guid? HmoCompanyId, string? Search,
+    FitnessStatus? Status = null, FitnessPaymentType? PaymentType = null, FitnessPaymentStatus? PaymentStatus = null) : IRequest<byte[]>;
 
 public sealed class ExportFitnessCertificatesQueryHandler(IFitnessService fitness)
     : IRequestHandler<ExportFitnessCertificatesQuery, byte[]>
 {
     public Task<byte[]> Handle(ExportFitnessCertificatesQuery request, CancellationToken cancellationToken) =>
-        fitness.ExportCsvAsync(request.From, request.To, request.HmoCompanyId, request.Search, cancellationToken);
+        fitness.ExportCsvAsync(request.From, request.To, request.HmoCompanyId, request.Search,
+            request.Status, request.PaymentType, request.PaymentStatus, cancellationToken);
 }
 
 public sealed class ExportFitnessCertificatesQueryValidator : AbstractValidator<ExportFitnessCertificatesQuery>

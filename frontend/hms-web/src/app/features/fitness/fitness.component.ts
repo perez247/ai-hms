@@ -1,6 +1,9 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, TemplateRef, ViewChild, ViewContainerRef, inject, signal } from '@angular/core';
+import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 import { RouterLink } from '@angular/router';
+import { BrnDialogImports, BrnDialogRef, BrnDialogService } from '@spartan-ng/brain/dialog';
 import { ApiService } from '../../core/api.service';
 import { AuthService } from '../../core/auth.service';
 import { ToastService } from '../../core/toast.service';
@@ -15,22 +18,33 @@ const DEFAULT_FINDINGS = (): FitnessInvestigationResult[] => [
 
 /**
  * Two-stage fitness capture:
- * Reception/Nurse creates basic information (Awaiting Nurse), Nurse adds findings/certificate
+ * Reception/Nurse creates basic information (Awaiting Nurse), Nurse adds investigation findings
  * and sends to Doctor, Doctor decides, Finance settles private records individually.
  */
 @Component({
   selector: 'app-fitness',
-  imports: [FormsModule, RouterLink],
+  imports: [FormsModule, RouterLink, BrnDialogImports, DatePipe],
   templateUrl: './fitness.component.html',
 })
 export class FitnessComponent implements OnInit {
   private readonly api = inject(ApiService);
   private readonly toast = inject(ToastService);
+  private readonly route = inject(ActivatedRoute);
+  private readonly dialogs = inject(BrnDialogService);
+  private readonly viewContainer = inject(ViewContainerRef);
+  private detailRef?: BrnDialogRef<unknown>;
+
+  @ViewChild('detailDialog') private detailDialog?: TemplateRef<unknown>;
+
   readonly auth = inject(AuthService);
   readonly items = signal<FitnessCertificate[]>([]);
+  readonly stageFilter = signal('');
+  readonly paymentTypeFilter = signal('');
+  readonly paymentStatusFilter = signal('');
+  readonly detail = signal<FitnessCertificate | null>(null);
+  readonly rejectionReason = signal('');
   readonly hmos = signal<HmoOption[]>([]);
   readonly findings = signal<FitnessInvestigationResult[]>(DEFAULT_FINDINGS());
-  readonly selectedCertificate = signal<File | null>(null);
   readonly reviewing = signal<FitnessCertificate | null>(null);
   readonly busy = signal(false);
 
@@ -47,6 +61,11 @@ export class FitnessComponent implements OnInit {
   findingValue = '';
 
   ngOnInit(): void {
+    const q = this.route.snapshot.queryParamMap;
+    this.patientNumber = q.get('patientNumber') ?? '';
+    this.patientFullName = q.get('patientName') ?? '';
+    this.patientAge = q.get('patientAge') ? Number(q.get('patientAge')) : null;
+    this.phone = q.get('phone') ?? '';
     this.load();
     if (this.auth.hasPermission('fitness.create')) {
       this.api.reference.hmos().subscribe({
@@ -56,11 +75,32 @@ export class FitnessComponent implements OnInit {
     }
   }
 
+  /** All three filters combine and are applied on every change. */
   load(): void {
-    this.api.fitness.search(null, null, null, null).subscribe({
+    this.api.fitness.search(null, null, null, null, 1,
+      this.stageFilter() || null, this.paymentTypeFilter() || null, this.paymentStatusFilter() || null).subscribe({
       next: (page) => this.items.set(page.items),
       error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load fitness records.'),
     });
+  }
+
+  setStage(value: string): void { this.stageFilter.set(value); this.load(); }
+  setPaymentType(value: string): void { this.paymentTypeFilter.set(value); this.load(); }
+  setPaymentStatus(value: string): void { this.paymentStatusFilter.set(value); this.load(); }
+
+  openDetail(item: FitnessCertificate): void {
+    this.detail.set(item);
+    this.rejectionReason.set('');
+    if (!this.detailDialog) return;
+    this.detailRef?.close();
+    this.detailRef = this.dialogs.open(this.detailDialog, this.viewContainer, undefined,
+      { ariaLabel: 'Fitness certificate details' });
+  }
+
+  closeDetail(): void {
+    this.detailRef?.close();
+    this.detailRef = undefined;
+    this.detail.set(null);
   }
 
   createBasic(): void {
@@ -100,12 +140,10 @@ export class FitnessComponent implements OnInit {
     this.findings.set(item.investigationResults.length > 0
       ? item.investigationResults.map((finding) => ({ ...finding }))
       : DEFAULT_FINDINGS());
-    this.selectedCertificate.set(null);
   }
 
   cancelNurseReview(): void {
     this.reviewing.set(null);
-    this.selectedCertificate.set(null);
   }
 
   addFinding(): void {
@@ -123,41 +161,36 @@ export class FitnessComponent implements OnInit {
     this.findings.update((items) => items.map((item, i) => i === index ? { ...item, value } : item));
   }
 
-  onCertificateSelected(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    this.selectedCertificate.set(input.files?.[0] ?? null);
-  }
-
   submitToDoctor(): void {
     const record = this.reviewing();
-    const file = this.selectedCertificate();
     if (!record) return;
     const validFindings = this.findings().filter((finding) => finding.key.trim() && finding.value.trim());
     if (validFindings.length === 0) { this.toast.error('Enter at least one investigation finding.'); return; }
-    if (!file) { this.toast.error('Upload the signed certificate before sending to the Doctor.'); return; }
     this.busy.set(true);
     this.api.fitness.updateClinical(record.id, validFindings).subscribe({
       next: () => {
-        this.api.fitness.uploadCertificate(record.id, file).subscribe({
-          next: () => {
-            this.api.fitness.submit(record.id).subscribe({
-              next: () => { this.busy.set(false); this.toast.success('Fitness sent to the Doctor.'); this.cancelNurseReview(); this.load(); },
-              error: (err) => { this.busy.set(false); this.toast.error(err?.error?.detail ?? 'Could not send to the Doctor.'); },
-            });
-          },
-          error: (err) => { this.busy.set(false); this.toast.error(err?.error?.detail ?? 'Could not upload the certificate.'); },
+        this.api.fitness.submit(record.id).subscribe({
+          next: () => { this.busy.set(false); this.toast.success('Fitness sent to the Doctor.'); this.cancelNurseReview(); this.load(); },
+          error: (err) => { this.busy.set(false); this.toast.error(err?.error?.detail ?? 'Could not send to the Doctor.'); },
         });
       },
       error: (err) => { this.busy.set(false); this.toast.error(err?.error?.detail ?? 'Could not save investigation findings.'); },
     });
   }
 
+  /** Doctor decision is made from the full-detail Spartan dialog, not a browser prompt. */
   decide(item: FitnessCertificate, approve: boolean): void {
-    const reason = approve ? null : prompt('Rejection reason:')?.trim();
+    const reason = approve ? null : this.rejectionReason().trim();
     if (!approve && !reason) { this.toast.error('A rejection reason is required.'); return; }
-    this.api.fitness.decide(item.id, approve, reason ?? null).subscribe({
-      next: () => { this.toast.success(approve ? 'Fitness approved.' : 'Fitness rejected.'); this.load(); },
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not save the Doctor decision.'),
+    this.busy.set(true);
+    this.api.fitness.decide(item.id, approve, reason).subscribe({
+      next: () => {
+        this.busy.set(false);
+        this.toast.success(approve ? 'Fitness approved.' : 'Fitness rejected.');
+        this.closeDetail();
+        this.load();
+      },
+      error: (err) => { this.busy.set(false); this.toast.error(err?.error?.detail ?? 'Could not save the Doctor decision.'); },
     });
   }
 
@@ -168,12 +201,10 @@ export class FitnessComponent implements OnInit {
     });
   }
 
-  download(item: FitnessCertificate): void {
-    if (!item.certificateFileName) { this.toast.error('No certificate is attached.'); return; }
-    this.api.fitness.downloadCertificate(item.id, item.certificateFileName);
+  exportCsv(): void {
+    this.api.fitness.export(null, null, null, null,
+      this.stageFilter() || null, this.paymentTypeFilter() || null, this.paymentStatusFilter() || null);
   }
-
-  exportCsv(): void { this.api.fitness.export(null, null, null, null); }
 
   statusClass(status: string): string {
     if (status === 'Approved' || status === 'Paid') return 'badge-green';

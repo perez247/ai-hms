@@ -18,6 +18,8 @@ export const accessGuard: CanActivateFn = (route) => {
 
   const roles = (route.data['roles'] as StaffRole[] | undefined) ?? [];
   const permissions = (route.data['permissions'] as string[] | undefined) ?? [];
-  if (auth.hasAnyRole(roles) && auth.hasAnyPermission(permissions)) return true;
+  const strictRoles = (route.data['strictRoles'] as StaffRole[] | undefined) ?? [];
+  const strictOk = strictRoles.length === 0 || strictRoles.some((role) => auth.hasExactRole(role));
+  if (strictOk && auth.hasAnyRole(roles) && auth.hasAnyPermission(permissions)) return true;
   return router.createUrlTree(['/forbidden']);
 };

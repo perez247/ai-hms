@@ -1,6 +1,7 @@
 using Hms.Application.DTOs;
 using Hms.Application.Features.Fitness;
 using Hms.Application.Security;
+using Hms.Domain.Enums;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -16,9 +17,12 @@ public sealed class FitnessController(IMediator mediator) : ControllerBase
     [HttpGet]
     [Authorize(Policy = Permissions.FitnessRead)]
     public async Task<IActionResult> Search([FromQuery] DateOnly? from, [FromQuery] DateOnly? to,
-        [FromQuery] Guid? hmoCompanyId, [FromQuery] string? search, [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 20, CancellationToken cancellationToken = default) =>
-        Ok(await mediator.Send(new SearchFitnessCertificatesQuery(from, to, hmoCompanyId, search, page, pageSize), cancellationToken));
+        [FromQuery] Guid? hmoCompanyId, [FromQuery] string? search,
+        [FromQuery] FitnessStatus? status = null, [FromQuery] FitnessPaymentType? paymentType = null,
+        [FromQuery] FitnessPaymentStatus? paymentStatus = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
+        CancellationToken cancellationToken = default) =>
+        Ok(await mediator.Send(new SearchFitnessCertificatesQuery(from, to, hmoCompanyId, search, page, pageSize,
+            status, paymentType, paymentStatus), cancellationToken));
 
     [HttpPost]
     [Authorize(Policy = Permissions.FitnessCreate)]
@@ -79,6 +83,9 @@ public sealed class FitnessController(IMediator mediator) : ControllerBase
     [HttpGet("export")]
     [Authorize(Policy = Permissions.FitnessExport)]
     public async Task<IActionResult> Export([FromQuery] DateOnly? from, [FromQuery] DateOnly? to,
-        [FromQuery] Guid? hmoCompanyId, [FromQuery] string? search, CancellationToken cancellationToken) =>
-        File(await mediator.Send(new ExportFitnessCertificatesQuery(from, to, hmoCompanyId, search), cancellationToken), "text/csv", $"fitness-{DateTime.UtcNow:yyyyMMdd}.csv");
+        [FromQuery] Guid? hmoCompanyId, [FromQuery] string? search, [FromQuery] FitnessStatus? status = null,
+        [FromQuery] FitnessPaymentType? paymentType = null, [FromQuery] FitnessPaymentStatus? paymentStatus = null,
+        CancellationToken cancellationToken = default) =>
+        File(await mediator.Send(new ExportFitnessCertificatesQuery(from, to, hmoCompanyId, search, status, paymentType, paymentStatus), cancellationToken),
+            "text/csv", $"fitness-{DateTime.UtcNow:yyyyMMdd}.csv");
 }

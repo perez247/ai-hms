@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Hms.Application.Common;
 using Hms.Application.DTOs;
 using Hms.Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
@@ -61,6 +62,9 @@ public sealed class HmoBillingFlowTests(HmsApiFactory factory) : IClassFixture<H
         Assert.NotNull(final.FinanceApprovedAt);
         Assert.NotNull(final.Receivable);
         Assert.Equal(final.HmoPayableTotal, final.Receivable!.Amount);
+
+        var ledger = await finance.GetFromJsonAsync<PagedResult<AccountBookEntryDto>>("/api/billing/account-book?pageSize=100", Json);
+        Assert.Contains(ledger!.Items, x => x.Direction == "Credit" && x.PaymentId is not null);
     }
 
 

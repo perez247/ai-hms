@@ -199,7 +199,7 @@ public sealed class PatientProfileService(
         if (!ProfileAccess.CanViewVitals(role)) throw new AppForbiddenException("You are not allowed to view patient vitals.");
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 50);
-        var query = db.Vitals.AsNoTracking().Where(x => x.Encounter!.PatientId == patientId);
+        var query = db.Vitals.AsNoTracking().Where(x => x.PatientId == patientId);
         var total = await query.CountAsync(cancellationToken);
         var rows = await query.OrderByDescending(x => x.RecordedAt).Skip((page - 1) * pageSize).Take(pageSize)
             .ToListAsync(cancellationToken);

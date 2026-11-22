@@ -27,8 +27,13 @@ public sealed class FitnessService(
         if (string.IsNullOrWhiteSpace(request.PatientFullName)) throw new AppConflictException("Patient full name is required.");
         if (request.PatientAge is < 0 or > 130) throw new AppConflictException("Patient age is outside a plausible range.");
         if (string.IsNullOrWhiteSpace(request.Phone)) throw new AppConflictException("Patient phone number is required.");
-        if (request.PaymentType == FitnessPaymentType.Hmo && request.HmoCompanyId is null)
-            throw new AppConflictException("Select an HMO for an HMO fitness record.");
+        if (request.PaymentType == FitnessPaymentType.Hmo)
+        {
+            if (request.HmoCompanyId is null)
+                throw new AppConflictException("Select an HMO for an HMO fitness record.");
+            if (!await db.HmoCompanies.AnyAsync(x => x.Id == request.HmoCompanyId && x.IsActive, cancellationToken))
+                throw new AppConflictException("The selected HMO is not registered or is inactive.");
+        }
 
         var patient = await ResolvePatientAsync(request.PatientNumber, request.PatientFullName, cancellationToken);
         if (request.HmoEnrollmentId is not null)
@@ -217,7 +222,9 @@ public sealed class FitnessService(
     public Task<FitnessCertificateDto> MarkPaidAsync(Guid certificateId, CancellationToken cancellationToken = default) =>
         SetPaymentAsync(certificateId, new FitnessPaymentRequest(true), cancellationToken);
 
-    public async Task<PagedResult<FitnessCertificateDto>> SearchAsync(DateOnly? from, DateOnly? to, Guid? hmoCompanyId, string? search, int page, int pageSize, CancellationToken cancellationToken = default)
+    public async Task<PagedResult<FitnessCertificateDto>> SearchAsync(DateOnly? from, DateOnly? to, Guid? hmoCompanyId, string? search, int page, int pageSize,
+        FitnessStatus? status = null, FitnessPaymentType? paymentType = null, FitnessPaymentStatus? paymentStatus = null,
+        CancellationToken cancellationToken = default)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
@@ -227,6 +234,9 @@ public sealed class FitnessService(
         if (from is not null) query = query.Where(x => x.FitnessDate >= from);
         if (to is not null) query = query.Where(x => x.FitnessDate <= to);
         if (hmoCompanyId is not null) query = query.Where(x => x.HmoCompanyId == hmoCompanyId);
+        if (status is not null) query = query.Where(x => x.Status == status);
+        if (paymentType is not null) query = query.Where(x => x.PaymentType == paymentType);
+        if (paymentStatus is not null) query = query.Where(x => x.PaymentStatus == paymentStatus);
         if (!string.IsNullOrWhiteSpace(search))
         {
             var term = $"%{search.Trim()}%";
@@ -257,9 +267,11 @@ public sealed class FitnessService(
         return rows.Select(x => Map(x, bills.GetValueOrDefault(x.Id))).ToList();
     }
 
-    public async Task<byte[]> ExportCsvAsync(DateOnly? from, DateOnly? to, Guid? hmoCompanyId, string? search, CancellationToken cancellationToken = default)
+    public async Task<byte[]> ExportCsvAsync(DateOnly? from, DateOnly? to, Guid? hmoCompanyId, string? search,
+        FitnessStatus? status = null, FitnessPaymentType? paymentType = null, FitnessPaymentStatus? paymentStatus = null,
+        CancellationToken cancellationToken = default)
     {
-        var result = await SearchAsync(from, to, hmoCompanyId, search, 1, 10000, cancellationToken);
+        var result = await SearchAsync(from, to, hmoCompanyId, search, 1, 10000, status, paymentType, paymentStatus, cancellationToken);
         var sb = new StringBuilder();
         sb.AppendLine("CertificateNumber,PatientNumber,Patient,Age,Sex,Phone,PaymentType,FitnessDate,ExpiresAt,HMO,Status,PaymentStatus,CertificateFile");
         foreach (var row in result.Items)
@@ -275,8 +287,11 @@ public sealed class FitnessService(
     private async Task<Patient?> ResolvePatientAsync(string? patientNumber, string fullName, CancellationToken cancellationToken)
     {
         if (!string.IsNullOrWhiteSpace(patientNumber))
-            return await db.Patients.SingleOrDefaultAsync(x => x.PatientNumber == patientNumber.Trim(), cancellationToken)
-                ?? throw new AppNotFoundException("Patient number not found.");
+        {
+            var match = await db.Patients.SingleOrDefaultAsync(x => x.PatientNumber == patientNumber.Trim(), cancellationToken);
+            // Unknown numbers are kept as free-text references; a registered patient is not required.
+            return match;
+        }
         var parts = fullName.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0) return null;
         var first = parts[0];
@@ -284,8 +299,8 @@ public sealed class FitnessService(
         var matches = await db.Patients.AsNoTracking()
             .Where(x => EF.Functions.ILike(x.FirstName, first) && EF.Functions.ILike(x.LastName, last))
             .Take(2).ToListAsync(cancellationToken);
-        if (matches.Count > 1) throw new AppConflictException("Multiple patients match this name. Enter the patient number.");
-        return matches.SingleOrDefault() ?? throw new AppNotFoundException("No patient matches this full name. Register the patient or enter a patient number.");
+        if (matches.Count > 1) throw new AppConflictException("Multiple patients match this name. Enter the patient number to link a record, or leave it blank for a free-entry certificate.");
+        return matches.SingleOrDefault();
     }
 
     private async Task<FitnessCertificateDto> MapAsync(Guid id, CancellationToken cancellationToken)

@@ -5,6 +5,7 @@ using Hms.Api.Middleware;
 using FluentValidation;
 using Hms.Application.Common;
 using Hms.Application.Security;
+using Hms.Domain.Enums;
 using Hms.Application.Services;
 using Hms.Infrastructure.Auth;
 using Hms.Infrastructure.Jobs;
@@ -84,6 +85,12 @@ builder.Services.AddAuthorization(options =>
             .RequireAuthenticatedUser()
             .RequireClaim("permission", permission));
     }
+
+    // Handover is nurse-only by design. The role claim exists in every issued token,
+    // including tokens issued before newer feature permissions were introduced.
+    options.AddPolicy(AppPolicies.NurseOnly, policy => policy
+        .RequireAuthenticatedUser()
+        .RequireClaim("staff_role", StaffRole.Nurse.ToString()));
 });
 
 builder.Services.AddCors(options => options.AddPolicy("web", policy =>
@@ -105,6 +112,7 @@ builder.Services.AddScoped<IClinicalService, ClinicalService>();
 builder.Services.AddScoped<IPharmacyService, PharmacyService>();
 builder.Services.AddScoped<IBillingService, BillingService>();
 builder.Services.AddScoped<IHmoService, HmoService>();
+builder.Services.AddScoped<ITariffPricingService, TariffPricingService>();
 builder.Services.AddScoped<IFitnessService, FitnessService>();
 builder.Services.AddScoped<IHrService, HrService>();
 builder.Services.AddScoped<IAdminService, AdminService>();
@@ -115,6 +123,7 @@ builder.Services.Configure<FileStorageOptions>(builder.Configuration.GetSection(
 builder.Services.AddSingleton<IFileStorage, LocalFileStorage>();
 builder.Services.AddScoped<IPatientProfileService, PatientProfileService>();
 builder.Services.AddScoped<IStaffProfileService, StaffProfileService>();
+builder.Services.AddScoped<INurseService, NurseService>();
 builder.Services.AddHostedService<ExpiryWorker>();
 
 var app = builder.Build();

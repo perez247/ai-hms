@@ -19,8 +19,6 @@ public static class FitnessStateMachine
     public static void EnsureCanSubmit(FitnessCertificate record)
     {
         EnsureCanCaptureClinicalInfo(record);
-        if (string.IsNullOrWhiteSpace(record.CertificateStorageKey))
-            throw new DomainRuleException("Upload the signed certificate before submitting.");
     }
 
     public static void EnsureCanDecide(FitnessCertificate record)

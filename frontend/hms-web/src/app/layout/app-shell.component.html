@@ -58,22 +58,21 @@
         }
       </div>
     </header>
-    <main class="p-4 sm:p-8">
+    <main class="py-4 px-2 sm:p-4">
       <router-outlet />
     </main>
   </div>
 
-  @if (confirmLogout()) {
-    <div class="fixed inset-0 z-[90] grid place-items-center bg-slate-950/50 p-4">
-      <div class="card w-full max-w-sm p-6">
-        <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Sign out</p>
-        <h2 class="mt-2 text-xl font-black text-slate-950">End this session?</h2>
-        <p class="mt-2 text-sm leading-6 text-slate-500">You will be returned to the login screen. No unsaved changes will be submitted.</p>
-        <div class="mt-6 flex justify-end gap-3">
-          <button type="button" class="btn-secondary" (click)="cancelLogout()">Cancel</button>
-          <button type="button" class="btn-danger" (click)="performLogout()">Log out</button>
-        </div>
+  <ng-template #logoutDialog let-close="close">
+    <div class="w-[min(440px,92vw)] rounded-2xl bg-white p-6 shadow-2xl">
+      <p class="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">Sign out</p>
+      <h2 class="mt-2 text-xl font-black text-slate-950" brnDialogTitle>End this session?</h2>
+      <p class="mt-2 text-sm leading-6 text-slate-500" brnDialogDescription>You will be returned to the login screen. No unsaved changes will be submitted.</p>
+      <div class="mt-6 flex justify-end gap-3">
+        <button type="button" class="btn-secondary" (click)="cancelLogout()">Cancel</button>
+        <button type="button" class="btn-danger" (click)="performLogout()">Log out</button>
       </div>
     </div>
-  }
+  </ng-template>
+  
 </div>

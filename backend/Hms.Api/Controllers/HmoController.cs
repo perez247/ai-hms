@@ -13,6 +13,21 @@ namespace Hms.Api.Controllers;
 /// <summary>HMO Office PA, coverage and HMO-only approval. Finance approval is separate.</summary>
 public sealed class HmoController(IMediator mediator) : ControllerBase
 {
+    [HttpGet("companies")]
+    [Authorize(Policy = Permissions.HmoRead)]
+    public async Task<IActionResult> GetDirectory(CancellationToken cancellationToken) =>
+        Ok(await mediator.Send(new GetHmoDirectoryQuery(), cancellationToken));
+
+    [HttpPost("companies")]
+    [Authorize(Policy = Permissions.HmoCompanyManage)]
+    public async Task<ActionResult<HmoDirectoryEntryDto>> Register(RegisterHmoRequest request, CancellationToken cancellationToken) =>
+        Ok(await mediator.Send(new RegisterHmoCommand(request), cancellationToken));
+
+    [HttpPost("companies/{id:guid}/tariffs")]
+    [Authorize(Policy = Permissions.HmoTariffManage)]
+    public async Task<ActionResult<HmoTariffDto>> SaveTariff(Guid id, CreateHmoTariffRequest request, CancellationToken cancellationToken) =>
+        Ok(await mediator.Send(new SaveHmoTariffCommand(id, request), cancellationToken));
+
     [HttpGet("prior-authorizations")]
     [Authorize(Policy = Permissions.HmoRead)]
     public async Task<IActionResult> Search([FromQuery] Guid? patientId, [FromQuery] int page = 1,

@@ -53,6 +53,7 @@ public class HmsDbContext(DbContextOptions<HmsDbContext> options)
     public DbSet<FitnessCertificate> FitnessCertificates => Set<FitnessCertificate>();
     public DbSet<FitnessInvestigationResult> FitnessInvestigationResults => Set<FitnessInvestigationResult>();
     public DbSet<PatientFile> PatientFiles => Set<PatientFile>();
+    public DbSet<ShiftHandover> ShiftHandovers => Set<ShiftHandover>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
 
@@ -235,8 +236,10 @@ public class HmsDbContext(DbContextOptions<HmsDbContext> options)
 
         modelBuilder.Entity<Vital>(b =>
         {
+            b.HasOne(x => x.Patient).WithMany().HasForeignKey(x => x.PatientId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne(x => x.Encounter).WithMany(x => x.Vitals).HasForeignKey(x => x.EncounterId).OnDelete(DeleteBehavior.Cascade);
             b.HasOne<AppUser>().WithMany().HasForeignKey(x => x.NurseId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.PatientId, x.RecordedAt });
             b.HasIndex(x => new { x.EncounterId, x.RecordedAt });
             b.ToTable(t => t.HasCheckConstraint("ck_vitals_pain", "pain_score IS NULL OR (pain_score >= 0 AND pain_score <= 10)"));
         });
@@ -376,7 +379,7 @@ public class HmsDbContext(DbContextOptions<HmsDbContext> options)
                 t.HasCheckConstraint("ck_bill_hmo_approval", "status NOT IN ('HmoApproved', 'Approved', 'Paid') OR payer_type <> 'Hmo' OR hmo_approved_at IS NOT NULL");
                 t.HasCheckConstraint("ck_bill_hmo_context", "payer_type <> 'Hmo' OR hmo_company_id IS NOT NULL");
                 t.HasCheckConstraint("ck_bill_context",
-                    "(kind = 'OutpatientEncounter' AND encounter_id IS NOT NULL) OR (kind = 'Emergency' AND encounter_id IS NOT NULL) OR (kind = 'InpatientAdmission' AND admission_id IS NOT NULL) OR (kind = 'Appointment' AND appointment_id IS NOT NULL) OR (kind = 'Registration' AND registration_period_id IS NOT NULL) OR (kind = 'FitnessCertificate' AND fitness_certificate_id IS NOT NULL)");
+                    "(kind = 'OutpatientEncounter' AND encounter_id IS NOT NULL) OR (kind = 'Emergency' AND encounter_id IS NOT NULL) OR (kind = 'InpatientAdmission' AND admission_id IS NOT NULL) OR (kind = 'Appointment' AND appointment_id IS NOT NULL) OR (kind = 'Registration' AND registration_period_id IS NOT NULL) OR (kind = 'FitnessCertificate' AND fitness_certificate_id IS NOT NULL) OR (kind = 'Manual')");
             });
         });
 
@@ -476,6 +479,13 @@ public class HmsDbContext(DbContextOptions<HmsDbContext> options)
             b.HasOne(x => x.Patient).WithMany().HasForeignKey(x => x.PatientId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(x => new { x.PatientId, x.CreatedAt });
             b.Property(x => x.StorageKey).HasMaxLength(500);
+        });
+
+        modelBuilder.Entity<ShiftHandover>(b =>
+        {
+            b.HasOne<AppUser>().WithMany().HasForeignKey(x => x.NurseId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.ShiftDate, x.CreatedAt });
+            b.Property(x => x.ContentHtml).HasMaxLength(50000);
         });
 
         modelBuilder.Entity<AuditLog>(b =>

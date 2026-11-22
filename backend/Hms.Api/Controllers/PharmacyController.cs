@@ -23,6 +23,11 @@ public sealed class PharmacyController(IMediator mediator) : ControllerBase
     public async Task<ActionResult<PharmacyPrescriptionDto>> GetPrescription(Guid encounterId, CancellationToken cancellationToken) =>
         Ok(await mediator.Send(new GetPharmacyPrescriptionQuery(encounterId), cancellationToken));
 
+    [HttpGet("encounters/{encounterId:guid}/price-options")]
+    [Authorize(Policy = Permissions.PharmacyRead)]
+    public async Task<ActionResult<PrescriptionPriceOptionsDto>> GetPriceOptions(Guid encounterId, CancellationToken cancellationToken) =>
+        Ok(await mediator.Send(new GetPrescriptionPriceOptionsQuery(encounterId), cancellationToken));
+
     [HttpPost("dispenses")]
     [Authorize(Policy = Permissions.PharmacyDispense)]
     public async Task<ActionResult<DispenseResultDto>> Dispense(DispenseRequest request, CancellationToken cancellationToken) =>

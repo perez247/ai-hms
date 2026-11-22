@@ -21,7 +21,7 @@ public enum EncounterStatus { Open, Completed, Cancelled }
 public enum AdmissionStatus { Active, PendingDischarge, Discharged, Cancelled }
 public enum WardType { General, Private }
 
-public enum BillKind { Registration, Appointment, Emergency, OutpatientEncounter, InpatientAdmission, FitnessCertificate }
+public enum BillKind { Registration, Appointment, Emergency, OutpatientEncounter, InpatientAdmission, FitnessCertificate, Manual }
 /// <summary>
 /// Billing lifecycle. Approved is the payable state; HMO bills must pass HmoPending/HmoApproved first.
 /// </summary>

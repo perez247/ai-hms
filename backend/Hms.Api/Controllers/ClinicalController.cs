@@ -33,6 +33,11 @@ public sealed class ClinicalController(IMediator mediator) : ControllerBase
     public async Task<ActionResult<VitalDto>> RecordVitals(RecordVitalsRequest request, CancellationToken cancellationToken) =>
         Ok(await mediator.Send(new RecordVitalsCommand(request), cancellationToken));
 
+    [HttpGet("doctor-queue")]
+    [Authorize(Policy = Permissions.EncountersRead)]
+    public async Task<ActionResult<DoctorQueueDto>> GetDoctorQueue(CancellationToken cancellationToken) =>
+        Ok(await mediator.Send(new GetDoctorQueueQuery(), cancellationToken));
+
     [HttpGet("encounters/{id:guid}")]
     [Authorize(Policy = Permissions.EncountersRead)]
     public async Task<ActionResult<EncounterDto>> GetEncounter(Guid id, CancellationToken cancellationToken) =>
