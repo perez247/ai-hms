@@ -74,9 +74,35 @@ public sealed partial class BillingService
             Transition(bill, BillStatus.Paid, "Settled at approval");
         }
 
+        SettleDebtIfCleared(bill);
         await db.SaveChangesAsync(cancellationToken);
         await audit.WriteAsync("bill.finance-approved", nameof(Bill), bill.Id.ToString(), bill.PatientId, bill.EncounterId, bill.Id,
             after: new { bill.Status, bill.FinanceApprovedAt, bill.HmoPayableTotal, bill.PatientPayableTotal }, cancellationToken: cancellationToken);
+        return bill;
+    }
+
+    /// <summary>Moves an unpaid bill to the debt ledger; the patient owes for self-pay, the HMO for HMO bills.</summary>
+    public async Task<Bill> MoveToDebtAsync(Guid billId, string? reason, CancellationToken cancellationToken = default)
+    {
+        var bill = await LoadBillAsync(billId, cancellationToken);
+        if (bill.IsDebt && bill.DebtSettledAt is null) return bill;
+        if (bill.Status is BillStatus.Draft or BillStatus.Void)
+            throw new AppConflictException("Only a committed bill can be moved to debt.");
+        if (bill.Status == BillStatus.Paid || BillingCalculator.Outstanding(bill) <= 0m)
+            throw new AppConflictException("A fully settled bill has no debt to record.");
+        if (bill.PayerType == PayerType.Hmo && bill.HmoCompanyId is null)
+            throw new AppConflictException("An HMO bill needs an HMO company before it can be moved to debt.");
+
+        bill.IsDebt = true;
+        bill.DebtOwner = bill.PayerType == PayerType.Hmo ? DebtOwner.Hmo : DebtOwner.Patient;
+        bill.DebtRecordedAt = DateTimeOffset.UtcNow;
+        bill.DebtRecordedBy = user.RequireId();
+        bill.DebtReason = reason;
+        bill.DebtSettledAt = null;
+        bill.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+        await audit.WriteAsync("bill.moved-to-debt", nameof(Bill), bill.Id.ToString(), bill.PatientId, bill.EncounterId, bill.Id,
+            after: new { bill.DebtOwner, bill.Balance, reason }, cancellationToken: cancellationToken);
         return bill;
     }
 
@@ -165,6 +191,7 @@ public sealed partial class BillingService
             bill.PaidAt = DateTimeOffset.UtcNow;
         }
 
+        SettleDebtIfCleared(bill);
         await db.SaveChangesAsync(cancellationToken);
         await audit.WriteAsync("bill.payment-recorded", nameof(Payment), payment.Id.ToString(), bill.PatientId, bill.EncounterId, bill.Id,
             after: new { payment.Amount, payment.Method, bill.PaidTotal, bill.Status }, cancellationToken: cancellationToken);

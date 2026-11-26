@@ -12,6 +12,9 @@ public class Appointment : Entity
     public DateTimeOffset ScheduledAt { get; set; }
     public int DurationMinutes { get; set; } = 30;
     public string? Reason { get; set; }
+    public FundingSource FundingSource { get; set; } = FundingSource.Private;
+    public Guid? HmoEnrollmentId { get; set; }
+    public PatientHmoEnrollment? HmoEnrollment { get; set; }
     public AppointmentStatus Status { get; set; } = AppointmentStatus.Scheduled;
     public DateTimeOffset? CheckedInAt { get; set; }
     public Guid? CreatedBy { get; set; }
@@ -63,29 +66,34 @@ public class Encounter : Entity
     public EncounterType Type { get; set; }
     public bool IsEmergency { get; set; }
     public EncounterStatus Status { get; set; } = EncounterStatus.Open;
+    public FundingSource FundingSource { get; set; } = FundingSource.Private;
     public Guid? HmoEnrollmentId { get; set; }
     public PatientHmoEnrollment? HmoEnrollment { get; set; }
     public DateTimeOffset StartedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? ClosedAt { get; set; }
-    public string? ChiefComplaint { get; set; }
+    public string? PresentingComplaint { get; set; }
+    public int? PresentingComplaintDurationDays { get; set; }
+    public string? HistoryOfPresentingComplaint { get; set; }
+    public string? PastMedicalSurgicalHistory { get; set; }
+    public string? FamilyHistory { get; set; }
+    public string? Examination { get; set; }
+    /// <summary>Ancillary clerking fields captured by the structured form (ROS, allergies, plan advice…).</summary>
+    public string? ClerkingDetails { get; set; }
     public string? Diagnosis { get; set; }
-    public string? Notes { get; set; }
+    public EncounterDisposition? Disposition { get; set; }
     public Guid? CreatedBy { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }
-
-    public ICollection<Vital> Vitals { get; set; } = new List<Vital>();
     public ICollection<Prescription> Prescriptions { get; set; } = new List<Prescription>();
     public ICollection<InvestigationOrder> Investigations { get; set; } = new List<InvestigationOrder>();
     public ICollection<SurgeryCase> Surgeries { get; set; } = new List<SurgeryCase>();
+    public ICollection<ServiceRequest> ServiceRequests { get; set; } = new List<ServiceRequest>();
 }
 
 public class Vital : Entity
 {
     public Guid PatientId { get; set; }
     public Patient? Patient { get; set; }
-    public Guid? EncounterId { get; set; }
-    public Encounter? Encounter { get; set; }
     public Guid NurseId { get; set; }
     public DateTimeOffset RecordedAt { get; set; } = DateTimeOffset.UtcNow;
     public decimal? TemperatureC { get; set; }

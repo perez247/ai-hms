@@ -26,6 +26,8 @@ export class PatientsComponent implements OnInit {
   readonly selected = signal<Patient | null>(null);
   readonly hmos = signal<HmoOption[]>([]);
   readonly search = signal('');
+  readonly editing = signal(false);
+  readonly editingPatient = signal<Patient | null>(null);
 
   readonly form = this.fb.nonNullable.group({
     firstName: ['', Validators.required],
@@ -36,6 +38,10 @@ export class PatientsComponent implements OnInit {
     phone: [''],
     email: [''],
     address: [''],
+    stateOfOrigin: [''],
+    homeTown: [''],
+    allergy: [''],
+    occupation: [''],
     nextOfKinName: [''],
     nextOfKinPhone: [''],
     hmoCompanyId: [''],
@@ -54,7 +60,7 @@ export class PatientsComponent implements OnInit {
       .pipe(finalize(() => this.loading.set(false)))
       .subscribe({
         next: (page) => { this.items.set(page.items); this.total.set(page.total); },
-        error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load patients.'),
+        error: (err) => void err,
       });
   }
 
@@ -66,7 +72,7 @@ export class PatientsComponent implements OnInit {
   open(patient: PatientSearchItem): void {
     this.api.patients.get(patient.id).subscribe({
       next: (detail) => this.selected.set(detail),
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load patient.'),
+      error: (err) => void err,
     });
   }
 
@@ -78,7 +84,7 @@ export class PatientsComponent implements OnInit {
         this.notice.set(`Registration renewed to ${result.periodEnd}. Bill ${result.billId} sent to Finance.`);
         this.open({ id: patient.id } as PatientSearchItem);
       },
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Renewal failed.'),
+      error: (err) => void err,
     });
   }
 
@@ -91,21 +97,48 @@ export class PatientsComponent implements OnInit {
       firstName: value.firstName, middleName: value.middleName || null, lastName: value.lastName,
       sex: value.sex, dateOfBirth: value.dateOfBirth,
       phone: value.phone || null, email: value.email || null, address: value.address || null,
+      stateOfOrigin: value.stateOfOrigin || null, homeTown: value.homeTown || null,
+      allergy: value.allergy || null, occupation: value.occupation || null,
       nextOfKinName: value.nextOfKinName || null, nextOfKinPhone: value.nextOfKinPhone || null,
       hmoEnrollments: value.hmoCompanyId && value.hmoMemberId ? [{
         hmoCompanyId: value.hmoCompanyId, hmoMemberId: value.hmoMemberId, planName: value.planName || null,
         validFrom: today, validTo: oneYear, isPrimary: true,
       }] : [],
     };
-    this.api.patients.create(body).subscribe({
-      next: (patient) => {
-        this.notice.set(`Patient ${patient.patientNumber} created. Registration bill is ready for Finance.`);
-        this.showCreate.set(false);
-        this.form.reset({ sex: 'Female' });
-        this.selected.set(patient);
-        this.load();
-      },
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not create patient.'),
+    const onDone = (patient: Patient) => {
+      this.notice.set(this.editing()
+        ? `Patient ${patient.patientNumber} updated.`
+        : `Patient ${patient.patientNumber} created. Registration bill is ready for Finance.`);
+      this.showCreate.set(false);
+      this.editing.set(false);
+      this.editingPatient.set(null);
+      this.form.reset({ sex: 'Female' });
+      this.selected.set(patient);
+      this.load();
+    };
+    this.editing()
+      ? this.api.patients.update(this.editingPatient()?.id ?? '', body).subscribe({
+        next: (patient) => onDone(patient),
+        error: (err) => void err,
+      })
+      : this.api.patients.create(body).subscribe({
+        next: onDone,
+        error: (err) => void err,
+      });
+  }
+
+  startEdit(patient: Patient): void {
+    this.editingPatient.set(patient);
+    this.editing.set(true);
+    this.showCreate.set(true);
+    this.form.reset({
+      firstName: patient.firstName, middleName: patient.middleName ?? '', lastName: patient.lastName,
+      sex: patient.sex, dateOfBirth: patient.dateOfBirth, phone: patient.phone ?? '',
+      email: patient.email ?? '', address: patient.address ?? '',
+      stateOfOrigin: patient.stateOfOrigin ?? '', homeTown: patient.homeTown ?? '',
+      allergy: patient.allergy ?? '', occupation: patient.occupation ?? '',
+      nextOfKinName: patient.nextOfKinName ?? '', nextOfKinPhone: patient.nextOfKinPhone ?? '',
+      hmoCompanyId: '', hmoMemberId: '', planName: '',
     });
   }
 }

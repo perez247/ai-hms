@@ -47,6 +47,39 @@ public sealed class PatientService(
         return Map(patient);
     }
 
+    /// <summary>Receptionist-editable basic demographics; clinical records are untouched.</summary>
+    public async Task<PatientDto> UpdateAsync(Guid patientId, UpdatePatientRequest request, CancellationToken cancellationToken = default)
+    {
+        var patient = await db.Patients.Include(x => x.HmoEnrollments).ThenInclude(x => x.HmoCompany)
+            .SingleOrDefaultAsync(x => x.Id == patientId, cancellationToken)
+            ?? throw new AppNotFoundException("Patient not found.");
+        if (string.IsNullOrWhiteSpace(request.FirstName) || string.IsNullOrWhiteSpace(request.LastName))
+            throw new AppConflictException("First name and last name are required.");
+        if (request.DateOfBirth >= DateOnly.FromDateTime(DateTime.UtcNow))
+            throw new AppConflictException("Date of birth must be in the past.");
+
+        patient.FirstName = request.FirstName.Trim();
+        patient.MiddleName = request.MiddleName?.Trim();
+        patient.LastName = request.LastName.Trim();
+        patient.Sex = request.Sex;
+        patient.DateOfBirth = request.DateOfBirth;
+        patient.Phone = request.Phone?.Trim();
+        patient.Email = request.Email?.Trim();
+        patient.Address = request.Address?.Trim();
+        patient.StateOfOrigin = request.StateOfOrigin?.Trim();
+        patient.HomeTown = request.HomeTown?.Trim();
+        patient.Allergy = request.Allergy?.Trim();
+        patient.Occupation = request.Occupation?.Trim();
+        patient.NextOfKinName = request.NextOfKinName?.Trim();
+        patient.NextOfKinPhone = request.NextOfKinPhone?.Trim();
+        patient.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+        await audit.WriteAsync("patient.updated", nameof(Patient), patient.Id.ToString(), patient.Id,
+            after: new { patient.FirstName, patient.LastName, patient.StateOfOrigin, patient.HomeTown, patient.Allergy, patient.Occupation },
+            cancellationToken: cancellationToken);
+        return await GetAsync(patientId, cancellationToken);
+    }
+
     /// <summary>Registration, current period and registration bill are committed atomically.</summary>
     public async Task<PatientDto> GetByNumberAsync(string patientNumber, CancellationToken cancellationToken = default)
     {
@@ -88,6 +121,10 @@ public sealed class PatientService(
             Phone = request.Phone,
             Email = request.Email,
             Address = request.Address,
+            StateOfOrigin = request.StateOfOrigin?.Trim(),
+            HomeTown = request.HomeTown?.Trim(),
+            Allergy = request.Allergy?.Trim(),
+            Occupation = request.Occupation?.Trim(),
             NextOfKinName = request.NextOfKinName,
             NextOfKinPhone = request.NextOfKinPhone,
             RegistrationDate = today,
@@ -276,8 +313,9 @@ public sealed class PatientService(
     }
 
     private static PatientDto Map(Patient patient) => new(
-        patient.Id, patient.PatientNumber, patient.FullName, patient.Sex, patient.DateOfBirth,
-        patient.Phone, patient.Email, patient.Address, patient.NextOfKinName, patient.NextOfKinPhone,
+        patient.Id, patient.PatientNumber, patient.FullName, patient.FirstName, patient.LastName, patient.Sex, patient.DateOfBirth,
+        patient.Phone, patient.Email, patient.Address, patient.StateOfOrigin, patient.HomeTown, patient.Allergy, patient.Occupation,
+        patient.NextOfKinName, patient.NextOfKinPhone,
         patient.RegistrationDate, patient.CurrentRegistrationExpiresAt, patient.Status,
         patient.HmoEnrollments.OrderByDescending(x => x.IsPrimary).Select(x => new PatientHmoEnrollmentDto(
             x.Id, x.HmoCompanyId, x.HmoCompany?.Name ?? "HMO", x.HmoMemberId, x.PlanName,

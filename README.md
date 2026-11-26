@@ -17,7 +17,7 @@ A modular-monolith clinic management scaffold for the complete patient journey: 
 - Appointment booking and appointment fee billing.
 - Outpatient encounter, vitals, prescriptions, investigations, surgeries and reports.
 - Inpatient admission with multiple encounter entries, bed-day computation and discharge clearance.
-- Pharmacy queue, stock checks, dispensing, HMO tariff application and commit-to-Finance.
+- Pharmacy queue, stock checks, dispensing, HMO tariff application, commit-to-Finance and a shared Bills workbench (approve, negotiate, settle, track debt).
 - Billing state machine: draft, committed, HMO pending, HMO approved, Finance approved, paid and void.
 - HMO PA capture, line coverage, referral destination and HMO approval.
 - Finance payments, negotiated-price audit adjustments, receivables and account book.
@@ -28,7 +28,7 @@ A modular-monolith clinic management scaffold for the complete patient journey: 
 - All API actions routed through `IMediator`; commands/queries have dedicated handlers and FluentValidation validators.
 - Domain and Application layers have no ASP.NET Core, EF Core or Identity package references.
 - Background expiry worker for registrations, HMO contracts and tariffs.
-- EF Core migration and idempotent seed data with one outpatient and one inpatient demo journey.
+- EF Core migrations and an idempotent reference-data seed (users, settings, fees, HMO/tariff, stock); no clinical demo records.
 
 ## Repository layout
 
@@ -56,7 +56,7 @@ dotnet tool restore
 dotnet run --project backend/Hms.Api/Hms.Api.csproj
 ```
 
-The API applies migrations and seeds demo data on startup. It listens on **http://localhost:5080**. OpenAPI is at **http://localhost:5080/openapi/v1.json**.
+The API applies migrations and seeds reference data on startup. It listens on **http://localhost:5080**. OpenAPI is at **http://localhost:5080/openapi/v1.json**.
 
 Frontend:
 
@@ -83,10 +83,9 @@ Password for all seeded accounts: `ChangeMe123!`
 | hmo@clinic.local | HMO Office |
 | hr@clinic.local | HR Office |
 
-The seed includes:
-
-- **Ada Okafor** — HMO outpatient journey, two prescribed medications, open prescription in the pharmacy queue.
-- **Chinedu Bello** — self-pay inpatient admission with an active encounter and consultation bill ready for discharge billing.
+The seed includes only the accounts above, clinic settings, fees, the demo HMO contract/tariff and the
+stock catalogue. It creates **no patients, appointments, encounters, admissions or bills**; register a
+patient and book/check in an appointment to exercise the workflows.
 
 ## Useful commands
 

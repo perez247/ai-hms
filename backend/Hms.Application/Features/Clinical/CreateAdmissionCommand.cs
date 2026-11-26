@@ -21,6 +21,6 @@ public sealed class CreateAdmissionCommandValidator : AbstractValidator<CreateAd
         RuleFor(x => x.Request.DoctorId).NotEmpty();
         RuleFor(x => x.Request.WardType).IsInEnum();
         RuleFor(x => x.Request.BedNumber).MaximumLength(40);
-        RuleFor(x => x.Request.ChiefComplaint).MaximumLength(2000);
+        RuleFor(x => x.Request.PresentingComplaint).MaximumLength(1000);
     }
 }

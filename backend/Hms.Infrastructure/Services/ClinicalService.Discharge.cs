@@ -22,7 +22,8 @@ public sealed partial class ClinicalService
         if (admission.Status != AdmissionStatus.Active) throw new AppConflictException("Only an active admission can be discharged.");
         if (string.IsNullOrWhiteSpace(request.DischargeSummary)) throw new AppConflictException("A discharge summary is required.");
 
-        var bill = await billing.GetOrCreateAdmissionBillAsync(admission, cancellationToken);
+        var bill = await db.Bills.AsNoTracking().FirstOrDefaultAsync(x => x.Kind == BillKind.Visit && x.Status != BillStatus.Void && x.AdmissionId == admission.Id)
+            ?? throw new AppNotFoundException("Visit bill not found for this admission.");
         var admittedDate = DateOnly.FromDateTime(admission.AdmittedAt.UtcDateTime);
         var dischargeDate = DateOnly.FromDateTime(DateTime.UtcNow);
         var nights = BillingCalculator.BedNights(admittedDate, dischargeDate);
@@ -68,7 +69,7 @@ public sealed partial class ClinicalService
         if (admission.Status != AdmissionStatus.PendingDischarge)
             throw new AppConflictException("Request discharge before completing it.");
         var bill = await db.Bills.Include(x => x.PriorAuthorization)
-            .SingleOrDefaultAsync(x => x.Kind == BillKind.InpatientAdmission && x.AdmissionId == admissionId && x.Status != BillStatus.Void, cancellationToken)
+            .SingleOrDefaultAsync(x => x.Kind == BillKind.Visit && x.AdmissionId == admissionId && x.Status != BillStatus.Void, cancellationToken)
             ?? throw new AppConflictException("Discharge bill not found.");
         if (bill.Status is not (BillStatus.Approved or BillStatus.Paid))
             throw new AppConflictException("Finance approval is required before the patient can be discharged.");

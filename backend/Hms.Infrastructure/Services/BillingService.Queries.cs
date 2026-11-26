@@ -13,13 +13,16 @@ namespace Hms.Infrastructure.Services;
 public sealed partial class BillingService
 {
 
-    public async Task<PagedResult<BillDto>> SearchAsync(BillStatus? status, Guid? patientId, int page, int pageSize, CancellationToken cancellationToken = default)
+    public async Task<PagedResult<BillDto>> SearchAsync(BillStatus? status, Guid? patientId, int page, int pageSize, CancellationToken cancellationToken = default, bool? inDebt = null)
     {
         page = Math.Max(1, page);
         pageSize = Math.Clamp(pageSize, 1, 100);
         var query = db.Bills.AsNoTracking().AsQueryable();
         if (status is not null) query = query.Where(x => x.Status == status);
         if (patientId is not null) query = query.Where(x => x.PatientId == patientId);
+        // The Bills page hides active debts in its main view; the Debt view asks for them explicitly.
+        if (inDebt == true) query = query.Where(x => x.IsDebt && x.DebtSettledAt == null);
+        else if (inDebt == false) query = query.Where(x => !x.IsDebt || x.DebtSettledAt != null);
         var total = await query.CountAsync(cancellationToken);
         var bills = await query
             .Include(x => x.Patient).Include(x => x.FitnessCertificate).Include(x => x.HmoCompany).Include(x => x.PriorAuthorization)
@@ -49,10 +52,31 @@ public sealed partial class BillingService
         bill.EncounterId, bill.AdmissionId, bill.AppointmentId, bill.RegistrationPeriodId, bill.FitnessCertificateId,
         bill.CreatedAt, bill.CommittedAt, bill.HmoApprovedAt, bill.FinanceApprovedAt, bill.PaidAt,
         bill.Lines.OrderBy(x => x.CreatedAt).Select(x => new BillLineDto(
-            x.Id, x.Category, x.Description, x.Quantity, x.UnitPrice, x.GrossAmount, x.DiscountAmount,
+            x.Id, x.Category, ItemTypeFor(x), x.Description, x.Quantity, x.UnitPrice, x.GrossAmount, x.DiscountAmount,
             x.NetAmount, x.HmoAmount, x.PatientAmount, x.IsHmoCovered, x.TariffItemId,
             x.TariffConfirmedAt, x.ReferralDestination, x.EncounterId, x.AdmissionId, x.ChargeDate, x.CreatedBy)).ToList(),
         bill.Payments.Select(x => new PaymentDto(x.Id, x.Amount, x.Method, x.Reference, x.ReceivedAt, x.RecordedBy)).ToList(),
         bill.Adjustments.Select(x => new BillAdjustmentDto(x.Id, x.Amount, x.Reason, x.Status, x.CreatedAt, x.ApprovedBy)).ToList(),
-        bill.Receivable is null ? null : new HmoReceivableDto(bill.Receivable.Id, bill.Receivable.PaCode, bill.Receivable.Amount, bill.Receivable.SettledAmount, bill.Receivable.Status, bill.Receivable.DueDate));
+        bill.Receivable is null ? null : new HmoReceivableDto(bill.Receivable.Id, bill.Receivable.PaCode, bill.Receivable.Amount, bill.Receivable.SettledAmount, bill.Receivable.Status, bill.Receivable.DueDate),
+        bill.IsDebt, bill.DebtOwner, bill.DebtRecordedAt, bill.DebtReason, bill.DebtSettledAt);
+
+    /// <summary>
+    /// Classifies a bill line as a catalogue item so the compact invoice can group it by item type.
+    /// Finance-added lines use <see cref="ChargeSourceType.Encounter"/> and inherit the category type.
+    /// </summary>
+    private static StockItemType? ItemTypeFor(BillLine line) => line.SourceType switch
+    {
+        ChargeSourceType.MedicationDispenseItem or ChargeSourceType.MedicationAdministration => StockItemType.Medication,
+        ChargeSourceType.InvestigationOrder => StockItemType.Test,
+        ChargeSourceType.SurgeryCase => StockItemType.Procedure,
+        ChargeSourceType.Encounter => line.Category switch
+        {
+            BillLineCategory.Medication => StockItemType.Medication,
+            BillLineCategory.Investigation => StockItemType.Test,
+            BillLineCategory.Surgery => StockItemType.Procedure,
+            BillLineCategory.Consultation or BillLineCategory.Emergency => StockItemType.Service,
+            _ => null
+        },
+        _ => null
+    };
 }

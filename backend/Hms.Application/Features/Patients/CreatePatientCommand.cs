@@ -26,6 +26,10 @@ public sealed class CreatePatientCommandValidator : AbstractValidator<CreatePati
         RuleFor(x => x.Request.DateOfBirth).NotEmpty().LessThan(DateOnly.FromDateTime(DateTime.UtcNow));
         RuleFor(x => x.Request.Phone).MaximumLength(40);
         RuleFor(x => x.Request.Email).EmailAddress().MaximumLength(320).When(x => !string.IsNullOrWhiteSpace(x.Request.Email));
+        RuleFor(x => x.Request.StateOfOrigin).MaximumLength(100);
+        RuleFor(x => x.Request.HomeTown).MaximumLength(100);
+        RuleFor(x => x.Request.Allergy).MaximumLength(200);
+        RuleFor(x => x.Request.Occupation).MaximumLength(100);
         RuleFor(x => x.Request.HmoEnrollments)
             .Must(enrollments => enrollments is null || enrollments.Count(x => x.IsPrimary) <= 1)
             .WithMessage("Only one HMO enrollment may be primary.");

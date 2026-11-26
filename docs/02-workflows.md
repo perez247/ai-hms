@@ -6,10 +6,10 @@
 |---|---|---|
 | Registration / renewal | Receptionist | Search/create patient, attach HMO IDs, trigger registration fee bill |
 | Appointment | Receptionist | Book doctor slot, trigger appointment fee bill |
-| Triage | Nurse | Record vitals, administer prescribed medication |
+| Triage | Nurse | Record vitals, administer prescribed medication; the scheduled list drops appointments once the visit bill is paid or invoiced to the HMO |
 | Outpatient encounter | Doctor | Create encounter, order medications/investigations/surgery, file reports |
 | Inpatient admission | Doctor | Create admission, add encounter entries, request and complete discharge |
-| Pharmacy | Pharmacy | Pull prescription, check stock, dispense, confirm tariff, commit outpatient bill |
+| Pharmacy | Pharmacy | Pull prescription, check stock, dispense, confirm tariff, commit outpatient bill; work the Bills page (approve, negotiate, settle) |
 | HMO authorisation | HMO Office | Capture PA, adjust coverage, HMO-approve the bill |
 | Finance | Finance | View committed bills, negotiate, record payments, approve, record receivable, account book |
 | Discharge clearance | Finance + Doctor | Finance makes bill payable; Doctor completes discharge only after clearance |
@@ -108,6 +108,9 @@ sequenceDiagram
 | HmoApproved | Approved | Finance | Patient co-pay paid; receivable fields available |
 | Approved | Paid | Finance | Fully settled |
 | Any non-paid/non-void | Void | Finance/Admin | Reason recorded; no settlement |
+| Any unpaid (Committed/HmoPending/HmoApproved/Approved) | Debt | Finance/Pharmacy | Balance > 0; owner is the patient (self-pay) or the HMO company (HMO bill); settlement closes the debt |
+
+**Debt ledger:** the Bills page has a **Debt** view. Moving a bill to debt hides it from the main bills list, records the owner and reason, and keeps it payable; recording the final payment sets `DebtSettledAt` and removes it from the active debt view. HMO bills are shown as owed by the HMO company.
 
 ## 2.5 HMO path
 

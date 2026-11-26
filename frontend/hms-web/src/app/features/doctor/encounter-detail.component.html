@@ -1,0 +1,382 @@
+<div class="mx-auto px-4">
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <a class="text-xs font-bold uppercase tracking-[0.2em] text-teal-700" routerLink="/doctor/encounters">← Encounter worklist</a>
+      <h1 class="mt-2 text-3xl font-black tracking-tight text-slate-950">Encounter detail</h1>
+      <p class="mt-1 text-sm text-slate-500">Subjective, objective, assessment and plan, with returned results and prior visits.</p>
+    </div>
+  </div>
+
+  @if (notice()) { <div class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{{ notice() }}</div> }
+  @if (loading()) { <div class="card mt-5 p-8 text-center text-slate-500">Loading encounter…</div> }
+
+  @if (!loading() && encounter(); as enc) {
+    <div class="mt-5 space-y-5">
+      <!-- Header -->
+      <div class="card">
+        <div class="card-header flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900">{{ enc.patientName }}</h2>
+            <p class="text-sm text-slate-500">{{ enc.patientNumber }} · {{ enc.encounterNumber }} · {{ enc.doctorName }}</p>
+            <p class="text-sm text-slate-500">{{ enc.type }} · started {{ enc.startedAt | date:'medium' }}@if (enc.closedAt) { · closed {{ enc.closedAt | date:'medium' }} }</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            @if (enc.type === 'Inpatient' && enc.admissionId) {
+              <button class="btn-primary" type="button" [disabled]="busy()" (click)="addNewEncounter()">
+                {{ busy() ? 'Working…' : 'Add New Encounter' }}
+              </button>
+            }
+            <span [class]="enc.isEmergency ? 'badge-red' : 'badge-blue'">{{ enc.isEmergency ? 'Emergency' : 'Routine' }}</span>
+            <span [class]="enc.status === 'Completed' ? 'badge-green' : enc.status === 'Cancelled' ? 'badge-red' : 'badge-amber'">{{ enc.status }}</span>
+            <span class="badge-slate">{{ enc.fundingSource === 'Hmo' ? 'HMO' : 'Private' }}</span>
+          </div>
+        </div>
+        @if (patient(); as p) {
+          <div class="card-body grid gap-4 text-sm md:grid-cols-4">
+            <div><p class="stat-label">Sex / age</p><p class="mt-1 font-medium">{{ p.sex }} · {{ p.dateOfBirth | date:'mediumDate' }}</p></div>
+            <div><p class="stat-label">Phone</p><p class="mt-1 font-medium">{{ p.phone || '—' }}</p></div>
+            <div><p class="stat-label">Allergy</p><p class="mt-1 font-medium" [class.text-rose-600]="!!p.allergy">{{ p.allergy || 'None recorded' }}</p></div>
+            <div><p class="stat-label">Occupation</p><p class="mt-1 font-medium">{{ p.occupation || '—' }}</p></div>
+          </div>
+        }
+
+      </div>
+
+      <!-- Vitals accordion (below patient information panel) -->
+      <div>
+        <details class="card overflow-hidden" [open]="latestVitals().length > 0">
+          <summary class="cursor-pointer list-none px-5 py-4 font-bold text-slate-900">Vitals (most recent first)</summary>
+          <div class="border-t border-slate-100 p-5">
+            @if (latestVitals().length > 0) {
+              <div class="mt-2 overflow-x-auto">
+                <table class="table">
+                  <thead><tr><th>Recorded</th><th>Temp</th><th>BP</th><th>Pulse</th><th>RR</th><th>SpO₂</th><th>Pain</th><th>Weight / height</th><th>Notes</th></tr></thead>
+                  <tbody>
+                    @for (vital of latestVitals(); track vital.id) {
+                      <tr>
+                        <td>{{ vital.recordedAt | date:'short' }}</td>
+                        <td [class]="vitalClass(vital.temperatureC, 'temperatureC')">{{ vital.temperatureC ?? '—' }}°C</td>
+                        <td [class]="bpClass(vital)">{{ vital.systolic ?? '—' }}/{{ vital.diastolic ?? '—' }}</td>
+                        <td [class]="vitalClass(vital.pulse, 'pulse')">{{ vital.pulse ?? '—' }}</td>
+                        <td>{{ vital.respiratoryRate ?? '—' }}</td>
+                        <td [class]="vitalClass(vital.spo2, 'spo2')">{{ vital.spo2 ?? '—' }}%</td>
+                        <td [class]="vitalClass(vital.painScore, 'painScore')">{{ vital.painScore ?? '—' }}</td>
+                        <td>{{ vital.weightKg != null ? vital.weightKg + ' kg' : '—' }} / {{ vital.heightCm != null ? vital.heightCm + ' cm' : '—' }}</td>
+                        <td class="text-slate-500">{{ vital.notes || '—' }}</td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+              @if (isVitalAbnormal(latestVitals()[0])) { <p class="mt-1 text-xs font-bold text-rose-600">Latest reading is outside the normal range.</p> }
+            } @else {
+              <p class="mt-1 text-slate-500">No vitals recorded.</p>
+            }
+          </div>
+        </details>
+      </div>
+
+      <!-- SOAP summary -->
+      <div class="grid gap-5 lg:grid-cols-2">
+        <div class="card">
+          <div class="card-header"><h3 class="font-bold text-slate-900">S — Subjective</h3></div>
+          <div class="card-body space-y-3 text-sm">
+            <div>
+              <p class="stat-label">Presenting complaint</p>
+              <p class="mt-1 whitespace-pre-line">
+                {{ enc.presentingComplaint || 'Not recorded' }}@if (enc.presentingComplaintDurationDays !== null && enc.presentingComplaintDurationDays !== undefined) {
+                  <span class="ml-1 font-semibold text-slate-600">· {{ enc.presentingComplaintDurationDays }} day(s)</span>
+                }
+              </p>
+            </div>
+            <div><p class="stat-label">History of presenting complaint</p><p class="mt-1 whitespace-pre-line">{{ enc.historyOfPresentingComplaint || 'Not recorded' }}</p></div>
+            @if (enc.clerking?.rosNotes) {
+              <div><p class="stat-label">Review of systems notes</p><p class="mt-1 whitespace-pre-line">{{ enc.clerking?.rosNotes }}</p></div>
+            }
+            <div><p class="stat-label">Past medical / surgical history</p><p class="mt-1 whitespace-pre-line">{{ enc.pastMedicalSurgicalHistory || 'Not recorded' }}</p></div>
+            <div><p class="stat-label">Family history</p><p class="mt-1 whitespace-pre-line">{{ enc.familyHistory || 'Not recorded' }}</p></div>
+            @if (enc.clerking?.allergies?.length) {
+              <div>
+                <p class="stat-label">Allergies recorded at clerking</p>
+                <div class="mt-1 flex flex-wrap gap-2">
+                  @for (allergy of enc.clerking?.allergies ?? []; track $index) { <span class="badge-amber">{{ allergy }}</span> }
+                </div>
+              </div>
+            }
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3 class="font-bold text-slate-900">O — Objective</h3></div>
+          <div class="card-body space-y-4 text-sm">
+            @if (enc.clerking?.generalObservation) {
+              <div>
+                <p class="stat-label">General observation</p>
+                <p class="mt-1 whitespace-pre-line">{{ enc.clerking?.generalObservation }}</p>
+              </div>
+            } @else {
+              <p class="mt-1 text-slate-500">No general observation recorded.</p>
+            }
+            @if (enc.clerking?.pointOfCare?.length) {
+              <div>
+                <p class="stat-label">Point-of-care results</p>
+                <ul class="mt-1 space-y-1">
+                  @for (item of enc.clerking?.pointOfCare ?? []; track $index) {
+                    <li><span class="font-medium">{{ item.key }}:</span> {{ item.value || '—' }}</li>
+                  }
+                </ul>
+              </div>
+            }
+            <div>
+              <p class="stat-label">Examination</p>
+              @if (enc.examination?.length) {
+                <ul class="mt-1 space-y-1">
+                  @for (item of enc.examination; track item.name) {
+                    <li>
+                      <span class="font-medium">{{ item.name }}:</span>
+                      @if (item.normal === true) { <span class="badge-green">Normal</span> }
+                      @else { {{ item.result || '—' }} }
+                    </li>
+                  }
+                </ul>
+              } @else { <p class="mt-1 text-slate-500">No examination findings recorded.</p> }
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3 class="font-bold text-slate-900">A — Assessment</h3></div>
+          <div class="card-body space-y-3 text-sm">
+            <div><p class="stat-label">Primary diagnosis</p><p class="mt-1 whitespace-pre-line">{{ enc.diagnosis || 'Not recorded' }}</p></div>
+            @if (enc.clerking?.clinicalImpression) {
+              <div><p class="stat-label">Clinical impression</p><p class="mt-1 whitespace-pre-line">{{ enc.clerking?.clinicalImpression }}</p></div>
+            }
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header"><h3 class="font-bold text-slate-900">P — Plan &amp; orders</h3></div>
+          <div class="card-body space-y-4 text-sm">
+            <div>
+              <p class="stat-label">Prescriptions</p>
+              @for (rx of enc.prescriptions; track rx.id) {
+                <div class="mt-2 rounded-xl border border-slate-200 p-3">
+                  <p class="flex flex-wrap items-center gap-2">
+                    <span class="badge-blue">{{ rx.status }}</span>
+                    <span class="text-xs text-slate-500">{{ rx.createdAt | date:'short' }}</span>
+                  </p>
+                  @if (rx.items?.length) {
+                    <div class="mt-2 overflow-x-auto">
+                      <table class="table">
+                        <thead><tr><th>Medication</th><th>Dosage</th><th>Route</th><th>Frequency</th><th>Duration</th><th>Quantity</th><th>Instructions</th></tr></thead>
+                        <tbody>
+                          @for (item of rx.items ?? []; track item.id) {
+                            <tr>
+                              <td class="font-semibold">{{ item.medicationName }}</td>
+                              <td>{{ item.dose || '—' }}</td>
+                              <td>{{ item.route || '—' }}</td>
+                              <td>{{ item.frequency || '—' }}</td>
+                              <td>{{ item.durationDays }} day(s)</td>
+                              <td>{{ item.quantityDispensed }}/{{ item.quantityPrescribed }}</td>
+                              <td class="text-slate-500">{{ item.instructions || '—' }}</td>
+                            </tr>
+                          }
+                        </tbody>
+                      </table>
+                    </div>
+                  } @else {
+                    <p class="mt-1 text-slate-500">{{ rx.itemCount }} item(s) on this prescription.</p>
+                  }
+                </div>
+              }
+              @if (enc.prescriptions.length === 0) { <p class="mt-1 text-slate-500">None.</p> }
+            </div>
+            <div>
+              <p class="stat-label">Tests &amp; procedures ordered</p>
+              @for (request of enc.serviceRequests; track request.id) {
+                <div class="mt-1">
+                  <p>{{ request.itemName }} <span class="badge-slate">{{ request.kind }}</span> <span class="text-slate-500">· {{ request.status }}</span></p>
+                  @if (request.priority) { <p class="text-xs text-slate-500">Priority: {{ request.priority }}</p> }
+                  @if (request.clinicalNote) { <p class="text-xs text-slate-500">Clinical note: {{ request.clinicalNote }}</p> }
+                </div>
+              }
+              @if (enc.serviceRequests.length === 0) { <p class="mt-1 text-slate-500">None.</p> }
+            </div>
+            @if (enc.clerking?.planAdvice) {
+              <div><p class="stat-label">Patient advice / counselling</p><p class="mt-1 whitespace-pre-line">{{ enc.clerking?.planAdvice }}</p></div>
+            }
+            @if (enc.clerking?.followUpDate) {
+              <div><p class="stat-label">Follow-up date</p><p class="mt-1">{{ enc.clerking?.followUpDate | date:'mediumDate' }}</p></div>
+            }
+            @if (enc.clerking?.referralDetails) {
+              <div><p class="stat-label">Referral details</p><p class="mt-1 whitespace-pre-line">{{ enc.clerking?.referralDetails }}</p></div>
+            }
+            <div>
+              <p class="stat-label">Disposition</p><p class="mt-1">{{ enc.disposition || 'Not recorded' }}</p>
+            </div>
+            <div>
+              <p class="stat-label">Legacy investigations / surgeries</p>
+              @for (investigation of enc.investigations; track investigation.id) { <p class="mt-1">{{ investigation.name }} · <span class="text-slate-500">{{ investigation.status }}</span></p> }
+              @for (surgery of enc.surgeries; track surgery.id) { <p class="mt-1">{{ surgery.name }} · <span class="text-slate-500">{{ surgery.status }}</span></p> }
+              @if (enc.investigations.length === 0 && enc.surgeries.length === 0) { <p class="mt-1 text-slate-500">None.</p> }
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Returned results -->
+      <div class="card overflow-hidden">
+        <div class="card-header flex flex-wrap items-center justify-between gap-2">
+          <div><h3 class="font-bold text-slate-900">Returned results</h3><p class="text-xs text-slate-500">Lab and procedure results are shown here for review, even after the encounter is signed.</p></div>
+          <span class="badge-slate">{{ returnedResults().length }} returned</span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="table">
+            <thead><tr><th>Request</th><th>Item</th><th>Status</th><th>Result</th><th>Findings</th><th>Performed</th></tr></thead>
+            <tbody>
+              @for (request of returnedResults(); track request.id) {
+                <tr [class.bg-rose-50]="request.abnormalFlag">
+                  <td class="font-mono text-xs">{{ request.requestNumber }}</td>
+                  <td><p class="font-semibold">{{ request.itemName }}</p><p class="text-xs text-slate-500">{{ request.kind }}</p></td>
+                  <td><span [class]="request.resultStatus === 'Submitted' ? 'badge-green' : 'badge-amber'">{{ request.resultStatus }}</span></td>
+                  <td class="whitespace-pre-line">{{ request.resultText || '—' }}</td>
+                  <td class="whitespace-pre-line">{{ request.findings || '—' }}</td>
+                  <td>{{ request.performedAt ? (request.performedAt | date:'short') : '—' }}</td>
+                </tr>
+              }
+              @if (returnedResults().length === 0) {
+                <tr><td colspan="6" class="py-8 text-center text-slate-500">No results have been returned for this encounter yet.</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Clerking form -->
+      @if (showClerking()) {
+        @if (clerkingContext(); as context) {
+          <app-clerking-form [context]="context" (draftSaved)="onDraftSaved($event)" (signed)="onSigned($event)"
+            (validationFailed)="onValidationFailed()" />
+        }
+      }
+
+      <!-- Patient history: previous encounters, most recent first -->
+      <div class="card mt-5">
+        <div class="card-header flex flex-wrap items-center justify-between gap-2">
+          <div><h3 class="font-bold text-slate-900">Previous encounters</h3><p class="text-xs text-slate-500">Earlier visits for this patient, most recent first. Each opens with its SOAP summary and returned results.</p></div>
+          <span class="badge-slate">{{ priorEncounters().length }}</span>
+        </div>
+        <div class="card-body space-y-3">
+          @for (prior of priorEncounters(); track prior.id) {
+            <details class="rounded-xl border border-slate-200 bg-white" (toggle)="loadPriorResults(prior.id)">
+              <summary class="cursor-pointer list-none px-4 py-3">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p class="font-semibold text-slate-900">{{ prior.startedAt | date:'medium' }} · {{ prior.encounterNumber }}</p>
+                    <p class="text-xs text-slate-500">{{ prior.type }} · {{ prior.doctorName }} · {{ prior.presentingComplaint || 'No complaint recorded' }}@if (prior.presentingComplaintDurationDays != null) { · {{ prior.presentingComplaintDurationDays }} day(s) }</p>
+                  </div>
+                  <span [class]="prior.status === 'Completed' ? 'badge-green' : prior.status === 'Cancelled' ? 'badge-red' : 'badge-amber'">{{ prior.status }}</span>
+                </div>
+              </summary>
+              <div class="gap-3 border-t border-slate-100 px-4 py-3 text-sm md:grid md:grid-cols-2">
+                <!-- Subjective -->
+                <div class="rounded-lg border border-slate-200 p-3">
+                  <p class="stat-label">Subjective</p>
+                  <div class="mt-1 space-y-0.5 whitespace-pre-line">
+                    <p>Presenting complaint: {{ prior.presentingComplaint || 'Not recorded' }}@if (prior.presentingComplaintDurationDays != null) { · {{ prior.presentingComplaintDurationDays }} day(s) }</p>
+                    <p class="text-slate-500">History: {{ prior.historyOfPresentingComplaint || 'Not recorded' }}</p>
+                    <p class="text-slate-500">Past medical/surgical: {{ prior.pastMedicalSurgicalHistory || 'Not recorded' }}</p>
+                    <p class="text-slate-500">Family: {{ prior.familyHistory || 'Not recorded' }}</p>
+                  </div>
+                </div>
+                <!-- Objective -->
+                <div class="rounded-lg border border-slate-200 p-3">
+                  <p class="stat-label">Objective</p>
+                  @if (prior.clerking?.generalObservation) {
+                    <p class="mt-1 text-slate-500">General observation: {{ prior.clerking.generalObservation }}</p>
+                  } @else if (clerkingField(prior.clerking, 'generalAppearance')) {
+                    <p class="mt-1 text-slate-500">General appearance: {{ clerkingField(prior.clerking, 'generalAppearance') }}@if (clerkingField(prior.clerking, 'generalAppearanceNotes')) { · {{ clerkingField(prior.clerking, 'generalAppearanceNotes') }} }</p>
+                  } @else {
+                    <p class="text-slate-500">Not recorded</p>
+                  }
+                  @if (prior.clerking?.pointOfCare?.length) {
+                    <div class="mt-2">
+                      @for (item of prior.clerking.pointOfCare; track $index) {
+                        <p class="text-slate-500">{{ item.key }}: {{ item.value || '—' }}</p>
+                      }
+                    </div>
+                  }
+                </div>
+                <!-- Assessment -->
+                <div class="rounded-lg border border-slate-200 p-3">
+                  <p class="stat-label">Assessment</p>
+                  <div class="mt-1 whitespace-pre-line">
+                    <p>{{ prior.diagnosis || 'Not recorded' }}</p>
+                    @if (prior.clerking?.clinicalImpression) { <p class="text-slate-500">Clinical impression: {{ prior.clerking.clinicalImpression }}</p> }
+                  </div>
+                </div>
+                <!-- Plan -->
+                <div class="rounded-lg border border-slate-200 p-3">
+                  <p class="stat-label">Plan</p>
+                  <div class="mt-1 space-y-0.5">
+                    @for (med of prior.medications ?? []; track med.id) {
+                      <p class="text-slate-500">Medication: {{ med.medicationName }} — {{ med.dose }} {{ med.route }} {{ med.frequency }} × {{ med.quantityPrescribed }} (dispensed {{ med.quantityDispensed }})</p>
+                    }
+                    @for (order of prior.orders ?? []; track order.id) {
+                      <p class="text-slate-500">{{ order.itemName }} <span class="badge-slate">{{ order.kind }}</span>@if (order.priority) { · {{ order.priority }} }</p>
+                    }
+                    @if (!prior.medications?.length && !prior.orders?.length) { <p class="text-slate-500">No plan recorded.</p> }
+                    @if (prior.clerking?.planAdvice) { <p class="whitespace-pre-line">Advice: {{ prior.clerking.planAdvice }}</p> }
+                    @if (prior.clerking?.followUpDate) { <p class="text-slate-500">Follow-up: {{ prior.clerking.followUpDate | date:'mediumDate' }}</p> }
+                    @if (prior.clerking?.referralDetails) { <p class="text-slate-500">Referral: {{ prior.clerking.referralDetails }}</p> }
+                    @if (prior.disposition) { <p class="text-slate-500">Disposition: {{ prior.disposition }}</p> }
+                  </div>
+                </div>
+                <!-- Results (paginated) -->
+                @if (priorResultsId() === prior.id) {
+                  <div class="col-span-2">
+                    <p class="stat-label">Returned results</p>
+                    @if (priorResultsLoading()) { <p class="text-slate-500">Loading results…</p> }
+                    @else {
+                      @if (priorResults().length === 0) {
+                        <p class="text-slate-500">No results returned for this encounter.</p>
+                      } @else {
+                        <div class="mt-1 overflow-x-auto">
+                          <table class="table text-xs">
+                            <thead><tr><th>Request</th><th>Item</th><th>Status</th><th>Result</th><th>Findings</th><th>Performed</th></tr></thead>
+                            <tbody>
+                              @for (result of priorResults(); track result.id) {
+                                <tr [class.bg-rose-50]="result.abnormalFlag">
+                                  <td class="font-mono text-slate-500">{{ result.requestNumber }}</td>
+                                  <td>{{ result.itemName }}</td>
+                                  <td>{{ result.resultStatus ?? 'Pending' }}</td>
+                                  <td class="whitespace-pre-line">{{ result.resultText || '—' }}</td>
+                                  <td class="whitespace-pre-line">{{ result.findings || '—' }}</td>
+                                  <td>{{ result.performedAt ? (result.performedAt | date:'short') : '—' }}</td>
+                                </tr>
+                              }
+                            </tbody>
+                          </table>
+                        </div>
+                        <div class="mt-2 flex items-center gap-2">
+                          <button class="btn-secondary px-3 py-1 text-xs" [disabled]="priorResultsPage() <= 1 || priorResultsLoading()" (click)="onPriorResultsPage(priorResultsPage() - 1)">Previous</button>
+                          <span class="text-xs text-slate-500">Page {{ priorResultsPage() }} · {{ priorResultsTotal() }} results</span>
+                          <button class="btn-secondary px-3 py-1 text-xs" [disabled]="priorResultsPage() >= Math.ceil(priorResultsTotal() / 10) || priorResultsLoading()" (click)="onPriorResultsPage(priorResultsPage() + 1)">Next</button>
+                        </div>
+                      }
+                    }
+                  </div>
+                }
+              </div>
+            </details>
+          }
+          @if (priorEncounters().length === 0) { <p class="text-sm text-slate-500">No previous encounters recorded for this patient.</p> }
+        </div>
+      </div>
+    </div>
+  }
+
+  @if (!loading() && !encounter()) {
+    <div class="card mt-5 p-8 text-center text-slate-500">Encounter not found or you do not have access to it.</div>
+  }
+</div>

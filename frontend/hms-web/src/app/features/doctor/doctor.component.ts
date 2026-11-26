@@ -1,130 +1,197 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { ApiService } from '../../core/api.service';
 import { ToastService } from '../../core/toast.service';
 import { AuthService } from '../../core/auth.service';
-import { DoctorQueue, DoctorQueuePatient, Encounter } from '../../core/models';
-import { bpClass, isVitalAbnormal, vitalClass } from '../../core/vitals.config';
+import { DoctorQueue, DoctorQueuePatient, Encounter, EncounterListItem } from '../../core/models';
 
-/** Doctor encounter/admission lookup and creation; deep-links the current prescription to Pharmacy. */
+interface DoctorRow extends EncounterListItem {
+  /** Pending rows come from the queue and have no encounter yet. */
+  pending: boolean;
+  referenceNumber: string;
+  hmoName: string | null;
+  sourceId: string;
+  openEncounterId: string | null;
+}
+
+type SortColumn = 'patientName' | 'type' | 'status' | 'startedAt';
+
+/** Doctor worklist: pending visits and existing encounters. Opening a row navigates to its own page. */
 @Component({
   selector: 'app-doctor',
-  imports: [FormsModule, DatePipe, RouterLink],
+  imports: [DatePipe],
   templateUrl: './doctor.component.html',
 })
 export class DoctorComponent implements OnInit {
   private readonly api = inject(ApiService);
   private readonly toast = inject(ToastService);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   readonly auth = inject(AuthService);
+
   readonly queue = signal<DoctorQueue | null>(null);
-  readonly encounter = signal<Encounter | null>(null);
+  readonly encounters = signal<EncounterListItem[]>([]);
   readonly notice = signal<string | null>(null);
-  encounterId = '';
-  patientNumber = '';
-  appointmentId = '';
-  hmoEnrollmentId = '';
-  chiefComplaint = '';
-  isEmergency = false;
-  wardType = 'General';
-  bedNumber = '';
-  admissionPatientNumber = '';
 
-  readonly vitalClass = vitalClass;
-  readonly bpClass = bpClass;
-  readonly isVitalAbnormal = isVitalAbnormal;
+  // Worklist filters and sorting. Pending + open is the default view.
+  readonly filterType = signal('');
+  readonly filterStatus = signal('active');
+  readonly filterDate = signal('');
+  readonly search = signal('');
+  readonly sortColumn = signal<SortColumn>('startedAt');
+  readonly sortAscending = signal(false);
 
-  ngOnInit(): void { this.loadQueue(); }
+  /** Pending appointments/admissions and existing encounters in one sortable, filterable table. */
+  readonly rows = computed<DoctorRow[]>(() => {
+    const queue = this.queue();
+    const pending: DoctorRow[] = [];
+    if (queue) {
+      for (const item of queue.awaitingOutpatients) {
+        // A pending visit with an open encounter is already represented by the encounter row.
+        if (!item.hasOpenEncounter) pending.push(this.toPendingRow(item, 'Outpatient'));
+      }
+      for (const item of queue.activeInpatients) {
+        if (!item.hasOpenEncounter) pending.push(this.toPendingRow(item, 'Inpatient'));
+      }
+    }
+    return [
+      ...pending,
+      ...this.encounters().map((encounter) => ({
+        ...encounter,
+        pending: false,
+        referenceNumber: encounter.appointmentNumber ?? encounter.admissionNumber ?? encounter.encounterNumber,
+        hmoName: null,
+        sourceId: encounter.id,
+        openEncounterId: null,
+      })),
+    ];
+  });
+
+  readonly filteredRows = computed(() => {
+    const type = this.filterType();
+    const status = this.filterStatus();
+    const date = this.filterDate();
+    const searchTerm = this.search().trim().toLowerCase();
+    const rows = this.rows().filter((row) => {
+      if (type && row.type !== type) return false;
+      if (status === 'active' && row.status !== 'Pending' && row.status !== 'Open') return false;
+      if (status === 'closed' && row.status !== 'Completed' && row.status !== 'Cancelled') return false;
+      if (status && status !== 'active' && status !== 'closed' && row.status !== status) return false;
+      if (date && !row.startedAt.startsWith(date)) return false;
+      if (searchTerm) {
+        const haystack = [row.encounterNumber, row.patientNumber, row.patientName, row.referenceNumber,
+          row.id, row.presentingComplaint ?? ''].join(' ').toLowerCase();
+        if (!haystack.includes(searchTerm)) return false;
+      }
+      return true;
+    });
+    const column = this.sortColumn();
+    const direction = this.sortAscending() ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      const left = String(a[column] ?? '').toLowerCase();
+      const right = String(b[column] ?? '').toLowerCase();
+      return left.localeCompare(right) * direction;
+    });
+  });
+
+  ngOnInit(): void {
+    this.reload();
+    // Keep old deep links working by redirecting ?encounterId=... to the encounter page.
+    const encounterId = this.route.snapshot.queryParamMap.get('encounterId');
+    if (encounterId) void this.router.navigate(['/doctor/encounters', encounterId]);
+  }
+
+  private toPendingRow(item: DoctorQueuePatient, type: string): DoctorRow {
+    return {
+      id: item.sourceId,
+      encounterNumber: item.referenceNumber,
+      patientId: item.patientId,
+      patientNumber: item.patientNumber,
+      patientName: item.patientName,
+      doctorName: this.auth.user()?.fullName ?? 'Unassigned',
+      type,
+      status: 'Pending',
+      isEmergency: false,
+      startedAt: item.since,
+      appointmentId: type === 'Outpatient' ? item.sourceId : null,
+      appointmentNumber: type === 'Outpatient' ? item.referenceNumber : null,
+      admissionId: type === 'Inpatient' ? item.sourceId : null,
+      admissionNumber: type === 'Inpatient' ? item.referenceNumber : null,
+      presentingComplaint: null,
+      pending: true,
+      referenceNumber: item.referenceNumber,
+      hmoName: item.hmoName,
+      sourceId: item.sourceId,
+      openEncounterId: item.openEncounterId,
+    };
+  }
+
+  reload(): void {
+    this.loadQueue();
+    this.api.clinical.encounters().subscribe({
+      next: (rows) => this.encounters.set(rows),
+      error: (err) => void err,
+    });
+  }
 
   loadQueue(): void {
     this.api.clinical.doctorQueue().subscribe({
       next: (queue) => this.queue.set(queue),
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load the doctor queue.'),
+      error: (err) => void err,
     });
   }
 
-  /** Opens an outpatient encounter for a checked-in patient directly from the queue. */
+  sortBy(column: SortColumn): void {
+    if (this.sortColumn() === column) this.sortAscending.update((value) => !value);
+    else { this.sortColumn.set(column); this.sortAscending.set(true); }
+  }
+
+  clearFilters(): void {
+    this.filterType.set(''); this.filterStatus.set('active'); this.filterDate.set(''); this.search.set('');
+  }
+
+  /** Pending rows create an encounter; both paths end on the encounter's own page. */
+  openRow(row: DoctorRow): void {
+    if (row.pending) {
+      const item = this.queue()?.awaitingOutpatients.find((x) => x.sourceId === row.sourceId)
+        ?? this.queue()?.activeInpatients.find((x) => x.sourceId === row.sourceId);
+      if (item) {
+        if (row.type === 'Outpatient') this.startOutpatient(item);
+        else this.startInpatient(item);
+      }
+      return;
+    }
+    void this.router.navigate(['/doctor/encounters', row.id]);
+  }
+
   startOutpatient(item: DoctorQueuePatient): void {
     const doctorId = this.auth.user()?.id;
     if (!doctorId) return;
-    this.patientNumber = item.patientNumber;
-    this.appointmentId = item.sourceId;
-    this.chiefComplaint = item.referenceNumber;
     this.api.clinical.createOutpatient({
       patientId: item.patientId, doctorId, appointmentId: item.sourceId,
-      isEmergency: false, hmoEnrollmentId: null, chiefComplaint: `Checked-in appointment ${item.referenceNumber}`,
+      isEmergency: false, hmoEnrollmentId: null,
+      presentingComplaint: `Checked-in appointment ${item.referenceNumber}`,
     }).subscribe({
-      next: (encounter) => {
-        this.encounter.set(encounter);
-        this.encounterId = encounter.id;
-        this.notice.set(`Encounter ${encounter.encounterNumber} created for ${item.patientName}.`);
-        this.loadQueue();
-      },
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not create encounter.'),
+      next: (encounter) => this.afterEncounterCreated(encounter, item.patientName),
+      error: (err) => void err,
     });
   }
 
-  /** Opens a new consultation against an active admission from the queue. */
   startInpatient(item: DoctorQueuePatient): void {
     const doctorId = this.auth.user()?.id;
     if (!doctorId) return;
     this.api.clinical.addInpatientEncounter(item.sourceId, {
-      doctorId, chiefComplaint: `Inpatient review ${item.referenceNumber}`,
+      doctorId, presentingComplaint: `Inpatient review ${item.referenceNumber}`,
     }).subscribe({
-      next: (encounter) => {
-        this.encounter.set(encounter);
-        this.encounterId = encounter.id;
-        this.notice.set(`Inpatient encounter ${encounter.encounterNumber} created for ${item.patientName}.`);
-        this.loadQueue();
-      },
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not create inpatient encounter.'),
+      next: (encounter) => this.afterEncounterCreated(encounter, item.patientName),
+      error: (err) => void err,
     });
   }
 
-  load(): void {
-    if (!this.encounterId.trim()) return;
-    this.api.clinical.encounter(this.encounterId.trim()).subscribe({
-      next: (encounter) => this.encounter.set(encounter),
-      error: (err) => { this.encounter.set(null); this.toast.error(err?.error?.detail ?? 'Encounter not found.'); },
-    });
-  }
-
-  createOutpatient(): void {
-    if (!this.patientNumber.trim()) return;
-    const doctorId = this.auth.user()?.id;
-    if (!doctorId) return;
-    this.api.patients.getByNumber(this.patientNumber.trim()).subscribe({
-      next: (patient) => this.api.clinical.createOutpatient({
-        patientId: patient.patient.id, doctorId, appointmentId: this.appointmentId || null,
-        isEmergency: this.isEmergency, hmoEnrollmentId: this.hmoEnrollmentId || null,
-        chiefComplaint: this.chiefComplaint || null,
-      }).subscribe({
-        next: (encounter) => {
-          this.encounter.set(encounter); this.encounterId = encounter.id;
-          this.notice.set('Outpatient encounter created. Bill is in Draft until Pharmacy commits.');
-          this.loadQueue();
-        },
-        error: (err) => this.toast.error(err?.error?.detail ?? 'Could not create encounter.'),
-      }),
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Patient number not found.'),
-    });
-  }
-
-  createAdmission(): void {
-    if (!this.admissionPatientNumber.trim()) return;
-    const doctorId = this.auth.user()?.id;
-    if (!doctorId) return;
-    this.api.patients.getByNumber(this.admissionPatientNumber.trim()).subscribe({
-      next: (patient) => this.api.clinical.createAdmission({
-        patientId: patient.patient.id, doctorId, wardType: this.wardType,
-        bedNumber: this.bedNumber || null, hmoEnrollmentId: this.hmoEnrollmentId || null,
-        chiefComplaint: this.chiefComplaint || null, admittedAt: new Date().toISOString(),
-      }).subscribe({
-        next: () => { this.notice.set('Admission created and consultation charge added.'); this.loadQueue(); },
-        error: (err) => this.toast.error(err?.error?.detail ?? 'Could not create admission.'),
-      }),
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Patient number not found.'),
-    });
+  private afterEncounterCreated(encounter: Encounter, patientName: string): void {
+    this.notice.set(`Encounter ${encounter.encounterNumber} created for ${patientName}.`);
+    this.reload();
+    void this.router.navigate(['/doctor/encounters', encounter.id]);
   }
 }

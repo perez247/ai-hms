@@ -54,7 +54,7 @@
           </div>
           <div class="overflow-x-auto">
             <table class="table">
-              <thead><tr><th>Medication</th><th>Stock</th><th>Prescribed</th><th>Dispense</th><th class="text-right">Unit price</th><th class="text-right">HMO tariff</th></tr></thead>
+              <thead><tr><th>Medication</th><th>Stock</th><th>Prescribed</th><th>Dispense</th><th>Adjust</th><th class="text-right">Unit price</th><th class="text-right">HMO tariff</th></tr></thead>
               <tbody>
                 @for (item of rx.items; track item.id) {
                   <tr>
@@ -62,6 +62,10 @@
                     <td><span [class]="item.stockOnHand > 0 ? 'badge-green' : 'badge-red'">{{ item.stockOnHand }} {{ item.unit }}</span></td>
                     <td>{{ remaining(item) }} {{ item.unit }}</td>
                     <td><input class="input w-24" type="number" min="0" [max]="remaining(item)" [value]="quantities()[item.id] ?? 0" (input)="setQuantity(item.id, $any($event.target).value, Math.min(remaining(item), item.stockOnHand))" /></td>
+                    <td>
+                      <button class="btn-secondary" type="button" (click)="adjust(item, -1)">−</button>
+                      <button class="btn-secondary ml-1" type="button" (click)="adjust(item, 1)">+</button>
+                    </td>
                     <td class="text-right">{{ item.unitPrice | currency:'NGN':'symbol-narrow':'1.2-2' }}</td>
                     <td class="text-right">@if (item.hmoUnitPrice !== null) {<span class="font-semibold text-teal-700">{{ item.hmoUnitPrice | currency:'NGN':'symbol-narrow':'1.2-2' }}</span><p class="text-xs text-slate-500">{{ item.hmoCoveragePercent }}% covered</p>} @else {<span class="text-slate-400">Cash price</span>}</td>
                   </tr>
@@ -69,6 +73,17 @@
               </tbody>
             </table>
           </div>
+          @if (commitBlocked()) {
+            <div class="mx-5 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <p class="font-bold">Commit to Finance is blocked</p>
+              <p class="mt-1">{{ rx.commitBlockedReason || 'Encounter is still in draft. The doctor must sign the encounter before it can be committed to Finance.' }}</p>
+            </div>
+          } @else if (inpatientAwaitingDischarge()) {
+            <div class="mx-5 mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+              <p class="font-bold">Ward dispensing is allowed; Finance commit waits for discharge</p>
+              <p class="mt-1">{{ rx.commitBlockedReason || 'Patient has not yet been discharged. The admission bill can only be committed to Finance after discharge.' }}</p>
+            </div>
+          }
           <div class="grid gap-4 border-t border-slate-100 bg-slate-50/60 p-5 md:grid-cols-3">
             <div><p class="stat-label">Patient estimate</p><p class="mt-1 text-xl font-bold text-slate-900">{{ patientEstimate() | currency:'NGN':'symbol-narrow':'1.2-2' }}</p></div>
             <div><p class="stat-label">HMO estimate</p><p class="mt-1 text-xl font-bold text-slate-900">{{ hmoEstimate() | currency:'NGN':'symbol-narrow':'1.2-2' }}</p></div>

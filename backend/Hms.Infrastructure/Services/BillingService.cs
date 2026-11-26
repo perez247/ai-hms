@@ -15,7 +15,8 @@ public sealed partial class BillingService(
     ICurrentUser user,
     IAuditWriter audit,
     INumberGenerator numbers,
-    ITariffPricingService tariffs) : IBillingService
+    ITariffPricingService tariffs,
+    IAppointmentPricingService appointmentPricing) : IBillingService
 {
     /// <summary>
     /// Finance-created bill. When an HMO is selected, medication lines are priced from the HMO's

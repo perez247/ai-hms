@@ -3,24 +3,14 @@ using Hms.Domain.Enums;
 
 namespace Hms.Domain.Entities;
 
-public class InvestigationCatalogItem : Entity
-{
-    public string Code { get; set; } = string.Empty;
-    public string Name { get; set; } = string.Empty;
-    public string? Category { get; set; }
-    public decimal Price { get; set; }
-    public string? TariffCode { get; set; }
-    public bool IsActive { get; set; } = true;
-}
-
-/// <summary>Investigation order and report. Completion creates the billable investigation line.</summary>
+/// <summary>Legacy investigation order kept for the existing billing path; new orders use ServiceRequest.</summary>
 public class InvestigationOrder : Entity
 {
     public Guid EncounterId { get; set; }
     public Encounter? Encounter { get; set; }
     public Guid DoctorId { get; set; }
     public Guid CatalogItemId { get; set; }
-    public InvestigationCatalogItem? CatalogItem { get; set; }
+    public StockItem? CatalogItem { get; set; }
     public InvestigationStatus Status { get; set; } = InvestigationStatus.Ordered;
     public DateTimeOffset OrderedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? PerformedAt { get; set; }
@@ -41,23 +31,14 @@ public class InvestigationParticipant : Entity
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
 
-public class SurgeryCatalogItem : Entity
-{
-    public string Code { get; set; } = string.Empty;
-    public string Name { get; set; } = string.Empty;
-    public decimal Price { get; set; }
-    public string? TariffCode { get; set; }
-    public bool IsActive { get; set; } = true;
-}
-
-/// <summary>Surgical case and report. Completion creates the billable surgery line.</summary>
+/// <summary>Legacy surgery case kept for the existing billing path; new orders use ServiceRequest.</summary>
 public class SurgeryCase : Entity
 {
     public Guid EncounterId { get; set; }
     public Encounter? Encounter { get; set; }
     public Guid LeadSurgeonId { get; set; }
     public Guid CatalogItemId { get; set; }
-    public SurgeryCatalogItem? CatalogItem { get; set; }
+    public StockItem? CatalogItem { get; set; }
     public SurgeryStatus Status { get; set; } = SurgeryStatus.Scheduled;
     public DateTimeOffset ScheduledAt { get; set; }
     public DateTimeOffset? PerformedAt { get; set; }

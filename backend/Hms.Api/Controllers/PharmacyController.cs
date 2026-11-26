@@ -1,6 +1,7 @@
 using Hms.Application.DTOs;
 using Hms.Application.Features.Pharmacy;
 using Hms.Application.Security;
+using Hms.Application.Services;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -10,8 +11,8 @@ namespace Hms.Api.Controllers;
 [ApiController]
 [Route("api/pharmacy")]
 [Authorize]
-/// <summary>Pharmacy queue, stock issue and tariff confirmation. Pharmacy never approves payment.</summary>
-public sealed class PharmacyController(IMediator mediator) : ControllerBase
+/// <summary>Pharmacy queue, stock issue and tariff confirmation. Bill approval, negotiation and payment happen on the Bills page.</summary>
+public sealed class PharmacyController(IMediator mediator, IPharmacyService pharmacy) : ControllerBase
 {
     [HttpGet("queue")]
     [Authorize(Policy = Permissions.PharmacyRead)]
@@ -32,6 +33,11 @@ public sealed class PharmacyController(IMediator mediator) : ControllerBase
     [Authorize(Policy = Permissions.PharmacyDispense)]
     public async Task<ActionResult<DispenseResultDto>> Dispense(DispenseRequest request, CancellationToken cancellationToken) =>
         Ok(await mediator.Send(new DispenseCommand(request), cancellationToken));
+
+    [HttpPut("prescriptions/{prescriptionId:guid}/items/{itemId:guid}/quantity")]
+    [Authorize(Policy = Permissions.PharmacyDispense)]
+    public async Task<IActionResult> AdjustQuantity(Guid prescriptionId, Guid itemId, AdjustPrescriptionQuantityRequest request, CancellationToken cancellationToken) =>
+        Ok(await pharmacy.AdjustPrescriptionQuantityAsync(prescriptionId, itemId, request.QuantityPrescribed, cancellationToken));
 
     [HttpPost("bills/{billId:guid}/confirm-tariff")]
     [Authorize(Policy = Permissions.PharmacyTariffConfirm)]

@@ -4,11 +4,27 @@ namespace Hms.Application.DTOs;
 
 public sealed record PatientBasicProfileDto(PatientDto Patient, bool IsPrivate, bool CanUploadFiles);
 public sealed record PatientVitalsPageDto(int Page, int PageSize, int Total, IReadOnlyList<VitalDto> Items);
-public sealed record PatientEncounterSummaryDto(Guid Id, string EncounterNumber, string Type, string Status, string DoctorName, DateTimeOffset StartedAt, string? ChiefComplaint);
+public sealed record PatientEncounterSummaryDto(Guid Id, string EncounterNumber, string Type, string Status, string DoctorName, DateTimeOffset StartedAt, string? PresentingComplaint);
 public sealed record PatientInvestigationDto(Guid Id, string Name, string Status, string EncounterNumber, DateTimeOffset OrderedAt, DateTimeOffset? PerformedAt, string? ReportText, string? ReferralDestination);
 public sealed record PatientSurgeryDto(Guid Id, string Name, string Status, string EncounterNumber, DateTimeOffset ScheduledAt, DateTimeOffset? PerformedAt, string? ReportText);
 public sealed record PatientFinanceDto(decimal TotalBilled, decimal TotalPaid, decimal Balance, string PayerType, IReadOnlyList<BillDto>? Bills);
 public sealed record PatientFileDto(Guid Id, string FileName, string ContentType, long SizeBytes, DateTimeOffset CreatedAt, Guid? UploadedBy);
+
+/// <summary>A medication prescribed to a patient, shown on the patient description page.</summary>
+public sealed record PatientMedicationDto(
+    Guid Id,
+    string EncounterNumber,
+    string EncounterType,
+    string MedicationName,
+    string Dose,
+    string Route,
+    string Frequency,
+    int DurationDays,
+    decimal QuantityPrescribed,
+    decimal QuantityDispensed,
+    string? Instructions,
+    string Status,
+    string CreatedAt);
 public sealed record PatientFileContentDto(string FileName, string ContentType, Stream Content);
 
 /// <summary>

@@ -36,6 +36,11 @@ public sealed class PatientsController(IMediator mediator) : ControllerBase
     public async Task<IActionResult> Renew(Guid id, CancellationToken cancellationToken) =>
         Ok(await mediator.Send(new RenewPatientRegistrationCommand(id), cancellationToken));
 
+    [HttpPut("{id:guid}")]
+    [Authorize(Policy = Permissions.PatientsUpdate)]
+    public async Task<ActionResult<PatientDto>> Update(Guid id, UpdatePatientRequest request, CancellationToken cancellationToken) =>
+        Ok(await mediator.Send(new UpdatePatientCommand(id, request), cancellationToken));
+
     [HttpPost("{id:guid}/hmo-enrollments")]
     [Authorize(Policy = Permissions.PatientHmoManage)]
     public async Task<IActionResult> AddHmoEnrollment(Guid id, AddHmoEnrollmentRequest request, CancellationToken cancellationToken) =>
@@ -107,6 +112,11 @@ public sealed class PatientsController(IMediator mediator) : ControllerBase
     [Authorize(Policy = Permissions.PatientsProfileRead)]
     public async Task<IActionResult> HmosByNumber(string patientNumber, CancellationToken cancellationToken) =>
         Ok(await mediator.Send(new GetPatientHmosByNumberQuery(patientNumber), cancellationToken));
+
+    [HttpGet("number/{patientNumber}/medications")]
+    [Authorize(Policy = Permissions.PatientsProfileRead)]
+    public async Task<IActionResult> MedicationsByNumber(string patientNumber, CancellationToken cancellationToken) =>
+        Ok(await mediator.Send(new GetPatientMedicationsByNumberQuery(patientNumber), cancellationToken));
 
     [HttpPost("number/{patientNumber}/hmo-enrollments")]
     [Authorize(Policy = Permissions.PatientHmoManage)]

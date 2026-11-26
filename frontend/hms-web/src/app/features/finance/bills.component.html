@@ -3,7 +3,7 @@
     <div>
       <p class="text-xs font-bold uppercase tracking-[0.2em] text-teal-700">Finance</p>
       <h1 class="mt-2 text-3xl font-black tracking-tight text-slate-950">Bills &amp; settlements</h1>
-      <p class="mt-1 text-sm text-slate-500">Approve committed bills, route HMO bills, record payments and negotiate with an audit trail.</p>
+      <p class="mt-1 text-sm text-slate-500">Approve committed bills, route HMO bills, record payments, negotiate and track debt with an audit trail.</p>
     </div>
     <div class="flex gap-2">
       <select class="input w-48" [value]="status()" (change)="status.set($any($event.target).value); load()">
@@ -16,6 +16,12 @@
   </div>
   @if (notice()) { <div class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{{ notice() }}</div> }
 
+  <div class="mt-5 flex flex-wrap gap-2">
+    <button class="rounded-xl px-4 py-2 text-sm font-bold" [class]="view() === 'bills' ? 'bg-slate-950 text-white' : 'bg-white text-slate-600'" type="button" (click)="setView('bills')">Bills</button>
+    <button class="rounded-xl px-4 py-2 text-sm font-bold" [class]="view() === 'debt' ? 'bg-slate-950 text-white' : 'bg-white text-slate-600'" type="button" (click)="setView('debt')">Debt</button>
+  </div>
+
+  @if (canManageBills && view() === 'bills') {
   <details class="card mt-5 overflow-hidden">
     <summary class="cursor-pointer list-none px-5 py-4 font-bold text-slate-900">Create a bill</summary>
     <div class="border-t border-slate-100 p-5">
@@ -44,25 +50,27 @@
       <div class="mt-4 flex justify-end gap-2"><button class="btn-secondary" type="button" (click)="addCreateLine()">+ Add line</button><button class="btn-primary" type="button" [disabled]="creating()" (click)="createBill()">{{ creating() ? 'Creating…' : 'Create bill' }}</button></div>
     </div>
   </details>
+  }
 
   <div class="mt-5 grid gap-5 xl:grid-cols-[1fr_460px]">
     <div class="card overflow-hidden">
       <div class="overflow-x-auto">
         <table class="table">
-          <thead><tr><th>Bill</th><th>Patient</th><th>Payer</th><th>Status</th><th class="text-right">Patient</th><th class="text-right">HMO</th><th class="text-right">Balance</th></tr></thead>
+          <thead><tr><th>Bill</th><th>Patient</th><th>Payer</th>@if (view() === 'debt') {<th>Owed by</th>}<th>Status</th><th class="text-right">Patient</th><th class="text-right">HMO</th><th class="text-right">Balance</th></tr></thead>
           <tbody>
             @for (bill of bills(); track bill.id) {
               <tr class="cursor-pointer" [class.bg-teal-50]="selected()?.id === bill.id" (click)="inspect(bill.id)">
                 <td><p class="font-semibold text-slate-900">{{ bill.billNumber }}</p><p class="text-xs text-slate-500">{{ bill.kind }}</p></td>
                 <td><p class="font-semibold">{{ bill.patientName }}</p><p class="text-xs text-slate-500">{{ bill.patientNumber || "—" }}</p></td>
                 <td><span [class]="bill.payerType === 'Hmo' ? 'badge-blue' : 'badge-slate'">{{ bill.payerType }}</span><p class="mt-1 text-xs text-slate-500">{{ bill.hmoCompanyName || 'Self pay' }}</p></td>
-                <td><span [class]="statusClass(bill.status)">{{ bill.status }}</span></td>
+                @if (view() === 'debt') { <td><p class="font-semibold">{{ debtOwnerLabel(bill) }}</p><p class="text-xs text-slate-500">{{ bill.debtOwner === 'Hmo' ? 'HMO debt' : 'Patient debt' }}</p></td> }
+                <td><span [class]="statusClass(bill.status)">{{ bill.status }}</span>@if (bill.isDebt) {<p class="mt-1 text-xs font-bold text-rose-600">Debt · {{ bill.debtOwner === 'Hmo' ? 'HMO' : 'Patient' }}</p>}</td>
                 <td class="text-right">{{ bill.patientPayableTotal | currency:'NGN':'symbol-narrow':'1.2-2' }}</td>
                 <td class="text-right">{{ bill.hmoPayableTotal | currency:'NGN':'symbol-narrow':'1.2-2' }}</td>
                 <td class="text-right font-semibold">{{ bill.balance | currency:'NGN':'symbol-narrow':'1.2-2' }}</td>
               </tr>
             }
-            @if (bills().length === 0) { <tr><td colspan="7" class="py-10 text-center text-slate-500">No bills in this view.</td></tr> }
+            @if (bills().length === 0) { <tr><td [attr.colspan]="view() === 'debt' ? 8 : 7" class="py-10 text-center text-slate-500">{{ view() === 'debt' ? 'No outstanding debts.' : 'No bills in this view.' }}</td></tr> }
           </tbody>
         </table>
       </div>
@@ -83,21 +91,31 @@
               <div class="rounded-xl bg-teal-50 p-3"><p class="stat-label text-teal-700">Balance</p><p class="mt-1 text-lg font-black text-teal-800">{{ bill.balance | currency:'NGN':'symbol-narrow':'1.2-2' }}</p></div>
             </div>
 
+            @if (bill.isDebt) {
+              <div class="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
+                <p class="font-semibold">Debt · owed by {{ debtOwnerLabel(bill) }}</p>
+                <p class="text-xs">Recorded {{ bill.debtRecordedAt | date:'medium' }}@if (bill.debtSettledAt) { · settled {{ bill.debtSettledAt | date:'medium' }}}</p>
+                @if (bill.debtReason) { <p class="mt-1 text-xs">{{ bill.debtReason }}</p> }
+              </div>
+            }
+
             @if (bill.payerType === 'Hmo') {
               <div class="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
                 <p class="font-semibold">PA: {{ bill.paCode || 'Not issued' }}</p>
                 <p class="mt-1 text-xs">HMO approval: {{ bill.hmoApprovedAt ? (bill.hmoApprovedAt | date:'medium') : 'pending' }}</p>
                 <p class="text-xs">Finance approval: {{ bill.financeApprovedAt ? (bill.financeApprovedAt | date:'medium') : 'pending' }}</p>
               </div>
-              @if (bill.status === 'Committed') { <button class="btn-secondary w-full" type="button" [disabled]="busy()" (click)="routeHmo()">Route to HMO Office</button> }
+              @if (canNegotiate && bill.status === 'Committed') { <button class="btn-secondary w-full" type="button" [disabled]="busy()" (click)="routeHmo()">Route to HMO Office</button> }
             }
 
             <div class="flex flex-wrap gap-2">
-              @if (bill.status === 'Committed' || bill.status === 'HmoPending' || bill.status === 'HmoApproved') { <button class="btn-secondary" type="button" [disabled]="busy()" (click)="negotiate()">Negotiated price</button> }
-              @if (bill.status !== 'Paid' && bill.status !== 'Void') { <button class="btn-primary" type="button" [disabled]="busy()" (click)="approve()">Approve bill</button> }
+              <button class="btn-secondary" type="button" (click)="openPrint()">Print invoice</button>
+              @if (canNegotiate && (bill.status === 'Committed' || bill.status === 'HmoPending' || bill.status === 'HmoApproved')) { <button class="btn-secondary" type="button" [disabled]="busy()" (click)="negotiate()">Negotiated price</button> }
+              @if (canMoveToDebt(bill)) { <button class="btn-secondary" type="button" [disabled]="busy()" (click)="moveToDebt()">Move to debt</button> }
+              @if (canManageBills && bill.status !== 'Paid' && bill.status !== 'Void') { <button class="btn-primary" type="button" [disabled]="busy()" (click)="approve()">Approve bill</button> }
             </div>
 
-            @if (canPay(bill)) {
+            @if (canRecordPayment && canPay(bill)) {
               <div class="rounded-xl border border-slate-200 p-3">
                 <p class="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">Record payment</p>
                 <div class="grid grid-cols-2 gap-2">
@@ -116,12 +134,28 @@
         </div>
 
         <div class="card overflow-hidden">
-          <div class="card-header"><h3 class="font-bold text-slate-900">Bill lines</h3></div>
+          <div class="card-header flex flex-wrap items-center justify-between gap-2">
+            <h3 class="font-bold text-slate-900">Bill lines</h3>
+            @if (canManageBills && (selected()?.status === 'Draft' || selected()?.status === 'Committed')) {
+              <div class="flex items-center gap-2">
+                <select class="input w-56" [ngModel]="serviceItemId()" (ngModelChange)="serviceItemId.set($event)">
+                  <option value="">Select service item</option>
+                  @for (item of serviceItems(); track item.id) { <option [value]="item.id">{{ item.code }} — {{ item.name }}</option> }
+                </select>
+                <input class="input w-20" type="number" min="1" [ngModel]="serviceQuantity()" (ngModelChange)="serviceQuantity.set(+$event)" />
+                <button class="btn-secondary" type="button" (click)="addServiceLine()">Add item</button>
+              </div>
+            }
+          </div>
           <div class="max-h-80 overflow-y-auto">
             <table class="table">
               <tbody>
                 @for (line of bill.lines; track line.id) {
-                  <tr><td><p class="font-medium text-slate-800">{{ line.description }}</p><p class="text-xs text-slate-500">{{ line.category }} · HMO {{ line.hmoAmount | currency:'NGN':'symbol-narrow':'1.2-2' }}</p></td><td class="text-right font-semibold">{{ line.netAmount | currency:'NGN':'symbol-narrow':'1.2-2' }}</td></tr>
+                  @if (line.category !== 'Consultation') {
+                    <tr><td><p class="font-medium text-slate-800">{{ line.description }}</p><p class="text-xs text-slate-500">{{ line.category }} · HMO {{ line.hmoAmount | currency:'NGN':'symbol-narrow':'1.2-2' }}</p></td><td class="text-right">{{ line.quantity }}</td><td class="text-right font-semibold">{{ line.netAmount | currency:'NGN':'symbol-narrow':'1.2-2' }}</td>
+                      @if (canManageBills && (selected()?.status === 'Draft' || selected()?.status === 'Committed')) { <td><button class="text-xs font-bold text-rose-600" type="button" (click)="removeLine(line.id)">Remove</button></td> }
+                    </tr>
+                  }
                 }
                 @if (bill.lines.length === 0) { <tr><td class="py-6 text-center text-slate-500">No lines yet.</td></tr> }
               </tbody>
@@ -131,4 +165,36 @@
       </div>
     }
   </div>
+
+  @if (printOpen() && selected(); as bill) {
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" (click)="closePrint()">
+      <div class="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-2xl bg-white p-5 shadow-xl" (click)="$event.stopPropagation()">
+        <div class="flex items-start justify-between gap-3">
+          <div><p class="text-xs font-bold uppercase tracking-wide text-slate-400">Invoice preview</p><h2 class="text-xl font-black text-slate-950">{{ bill.billNumber }}</h2><p class="text-sm text-slate-500">{{ bill.patientName }} · {{ bill.payerType === 'Hmo' ? (bill.hmoCompanyName || 'HMO') : 'Private' }}</p></div>
+          <button class="text-sm font-bold text-slate-500" type="button" (click)="closePrint()">Close</button>
+        </div>
+        <div class="mt-4 flex gap-2">
+          <button [class]="printFormat() === 'compact' ? 'btn-primary' : 'btn-secondary'" type="button" (click)="setPrintFormat('compact')">Compacted</button>
+          <button [class]="printFormat() === 'detailed' ? 'btn-primary' : 'btn-secondary'" type="button" (click)="setPrintFormat('detailed')">Detailed</button>
+        </div>
+        <p class="mt-3 text-xs text-slate-500">{{ printFormat() === 'compact' ? 'Catalogue items are grouped by item type; other charges are listed individually.' : 'Every bill line is listed individually.' }}</p>
+        <table class="table mt-3">
+          <thead><tr><th>Description</th><th class="text-right">Qty</th><th class="text-right">Amount</th></tr></thead>
+          <tbody>
+            @for (row of invoiceRows(); track $index) {
+              <tr><td>{{ row.description }}</td><td class="text-right">{{ row.quantity }}</td><td class="text-right font-semibold">{{ row.amount | currency:'NGN':'symbol-narrow':'1.2-2' }}</td></tr>
+            }
+          </tbody>
+        </table>
+        <div class="mt-4 flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
+          <span class="text-sm font-bold text-slate-700">Grand total</span>
+          <span class="text-lg font-black text-slate-950">{{ invoiceTotal(bill) | currency:'NGN':'symbol-narrow':'1.2-2' }}</span>
+        </div>
+        <div class="mt-4 flex justify-end gap-2">
+          <button class="btn-secondary" type="button" (click)="closePrint()">Cancel</button>
+          <button class="btn-primary" type="button" (click)="printInvoice()">Print</button>
+        </div>
+      </div>
+    </div>
+  }
 </div>

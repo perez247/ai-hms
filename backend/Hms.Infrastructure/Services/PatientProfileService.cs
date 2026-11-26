@@ -50,7 +50,7 @@ public sealed class PatientProfileService(
                 .Select(x => new { x.Id, x.FullName }).ToDictionaryAsync(x => x.Id, x => x.FullName, cancellationToken);
             encounters = rows.Select(x => new PatientEncounterSummaryDto(
                 x.Id, x.EncounterNumber, x.Type.ToString(), x.Status.ToString(),
-                doctorNames.GetValueOrDefault(x.DoctorId, "Unknown"), x.StartedAt, x.ChiefComplaint)).ToList();
+                doctorNames.GetValueOrDefault(x.DoctorId, "Unknown"), x.StartedAt, x.PresentingComplaint)).ToList();
 
             var investigationRows = await db.InvestigationOrders.AsNoTracking()
                 .Include(x => x.CatalogItem).Include(x => x.Encounter)
@@ -129,7 +129,38 @@ public sealed class PatientProfileService(
             .Select(x => new { x.Id, x.FullName }).ToDictionaryAsync(x => x.Id, x => x.FullName, cancellationToken);
         return rows.Select(x => new PatientEncounterSummaryDto(
             x.Id, x.EncounterNumber, x.Type.ToString(), x.Status.ToString(),
-            doctorNames.GetValueOrDefault(x.DoctorId, "Unknown"), x.StartedAt, x.ChiefComplaint)).ToList();
+            doctorNames.GetValueOrDefault(x.DoctorId, "Unknown"), x.StartedAt, x.PresentingComplaint)).ToList();
+    }
+
+    public async Task<IReadOnlyList<PatientMedicationDto>> GetMedicationsByNumberAsync(string patientNumber, CancellationToken cancellationToken = default)
+    {
+        var patient = await patients.GetByNumberAsync(patientNumber, cancellationToken);
+        RequireClinicalAccess();
+        var rows = await db.Prescriptions.AsNoTracking()
+            .Include(x => x.Items).ThenInclude(x => x.StockItem)
+            .Where(x => x.Encounter.PatientId == patient.Id && x.Status != PrescriptionStatus.Cancelled)
+            .OrderByDescending(x => x.CreatedAt).ToListAsync(cancellationToken);
+        var encounterIds = rows.Select(x => x.EncounterId).Distinct().ToList();
+        var encounters = await db.Encounters.AsNoTracking()
+            .Where(x => encounterIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, cancellationToken);
+        return rows.SelectMany(x => (x.Items ?? []).Select(item => {
+            var enc = encounters.GetValueOrDefault(x.EncounterId);
+            return new PatientMedicationDto(
+                item.Id,
+                enc?.EncounterNumber ?? "—",
+                enc?.Type.ToString() ?? "—",
+                item.StockItem?.Name ?? "Medication",
+                item.Dose,
+                item.Route,
+                item.Frequency,
+                item.DurationDays,
+                item.QuantityPrescribed,
+                item.QuantityDispensed,
+                item.Instructions,
+                x.Status.ToString(),
+                x.CreatedAt.ToString("o"));
+        })).ToList();
     }
 
     public async Task<IReadOnlyList<PatientInvestigationDto>> GetInvestigationsByNumberAsync(string patientNumber, CancellationToken cancellationToken = default)

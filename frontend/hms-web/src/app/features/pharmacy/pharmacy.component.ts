@@ -6,7 +6,7 @@ import { BrnDialogImports, BrnDialogRef, BrnDialogService } from '@spartan-ng/br
 import { finalize } from 'rxjs';
 import { ApiService } from '../../core/api.service';
 import { ToastService } from '../../core/toast.service';
-import { DispenseResult, PharmacyPrescription, PharmacyQueueItem, PrescriptionPriceOptions } from '../../core/models';
+import { DispenseResult, PharmacyPrescription, PharmacyPrescriptionItem, PharmacyQueueItem, PrescriptionPriceOptions } from '../../core/models';
 
 /**
  * Pharmacy commit-to-Finance screen. Quantities default to min(remaining, stock);
@@ -41,6 +41,18 @@ export class PharmacyComponent implements OnInit {
   readonly selectedOption = computed(() =>
     this.priceOptions()?.options.find((option) => option.payerType === this.selectedPayer()) ?? null);
 
+  /** Outpatient bills can only be committed after the doctor signs the encounter. */
+  readonly commitBlocked = computed(() => {
+    const prescription = this.prescription();
+    return !!prescription && !prescription.isInpatient && prescription.canCommitToFinance === false;
+  });
+
+  /** Inpatient charges stay on the draft bill until discharge; dispensing is still allowed. */
+  readonly inpatientAwaitingDischarge = computed(() => {
+    const prescription = this.prescription();
+    return !!prescription && prescription.isInpatient && prescription.canCommitToFinance === false;
+  });
+
   // Only positive quantities are sent; estimates use HMO tariff prices where available.
   readonly selectedItems = computed(() => {
     const prescription = this.prescription();
@@ -70,7 +82,7 @@ export class PharmacyComponent implements OnInit {
   loadQueue(): void {
     this.api.get<PharmacyQueueItem[]>('/pharmacy/queue').subscribe({
       next: (queue) => this.queue.set(queue),
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load the pharmacy queue.'),
+      error: (err) => void err,
     });
   }
 
@@ -91,8 +103,19 @@ export class PharmacyComponent implements OnInit {
           this.quantities.set(defaults);
           this.loadPriceOptions(encounterId);
         },
-        error: (err) => { this.prescription.set(null); this.toast.error(err?.error?.detail ?? 'Could not load the prescription.'); },
+        error: (err) => { this.prescription.set(null); void err; },
       });
+  }
+
+  /** Pharmacy may increase or decrease the quantity on an issued prescription. */
+  adjust(item: PharmacyPrescriptionItem, delta: number): void {
+    const prescription = this.prescription();
+    if (!prescription) return;
+    const next = Math.max(item.quantityDispensed, item.quantityPrescribed + delta);
+    if (next === item.quantityPrescribed) return;
+    this.api.pharmacy.adjustQuantity(prescription.id, item.id, next).subscribe({
+      next: () => { this.toast.success('Prescription quantity updated.'); this.load(this.encounterId()); },
+    });
   }
 
   /** Read-only comparison of private and patient-HMO prices; it never changes the encounter payer. */
@@ -117,7 +140,11 @@ export class PharmacyComponent implements OnInit {
   }
 
   canDispense(): boolean {
-    return this.selectedItems().length > 0 && !this.dispensing() && this.prescription()?.status !== 'Dispensed';
+    const prescription = this.prescription();
+    if (!prescription) return false;
+    // The API enforces the same rule; the UI simply makes the reason visible.
+    if (!prescription.isInpatient && prescription.canCommitToFinance === false) return false;
+    return this.selectedItems().length > 0 && !this.dispensing() && prescription.status !== 'Dispensed';
   }
 
   openConfirm(): void {
@@ -154,7 +181,7 @@ export class PharmacyComponent implements OnInit {
         },
         error: (err) => {
           this.closeConfirm();
-          this.toast.error(err?.error?.detail ?? 'Dispense failed.');
+          void err;
         },
       });
   }

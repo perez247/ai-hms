@@ -8,11 +8,11 @@ import { AuthService } from '../../core/auth.service';
 import { ToastService } from '../../core/toast.service';
 import {
   FitnessCertificate, HmoOption, PatientBasicProfile, PatientEncounterSummary, PatientFile,
-  PatientFinance, PatientHmoEnrollment, PatientInvestigation, PatientSurgery, PatientVitalsPage,
+  PatientFinance, PatientHmoEnrollment, PatientInvestigation, PatientMedication, PatientSurgery, PatientVitalsPage,
 } from '../../core/models';
 import { bpClass, isVitalAbnormal, vitalClass } from '../../core/vitals.config';
 
-type SectionKey = 'hmo' | 'vitals' | 'fitness' | 'encounters' | 'investigations' | 'surgeries' | 'finance' | 'files';
+type SectionKey = 'hmo' | 'vitals' | 'fitness' | 'encounters' | 'investigations' | 'surgeries' | 'finance' | 'medications' | 'files';
 
 /** Patient chart using patient number in the URL and lazy accordion sections. */
 @Component({
@@ -35,6 +35,7 @@ export class PatientProfileComponent implements OnInit {
   readonly investigations = signal<PatientInvestigation[] | null>(null);
   readonly surgeries = signal<PatientSurgery[] | null>(null);
   readonly finance = signal<PatientFinance | null>(null);
+  readonly medications = signal<PatientMedication[] | null>(null);
   readonly files = signal<PatientFile[] | null>(null);
   readonly vitalsPage = signal(1);
 
@@ -58,7 +59,7 @@ export class PatientProfileComponent implements OnInit {
     if (this.auth.hasPermission('patients.hmo.manage')) {
       this.api.reference.hmos().subscribe({
         next: (hmos) => this.hmos.set(hmos),
-        error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load HMO options.'),
+        error: (err) => void err,
       });
     }
   }
@@ -71,7 +72,7 @@ export class PatientProfileComponent implements OnInit {
       .pipe(finalize(() => this.loading.set(false)))
       .subscribe({
         next: (profile) => this.basic.set(profile),
-        error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load the patient record.'),
+        error: (err) => void err,
       });
   }
 
@@ -85,6 +86,7 @@ export class PatientProfileComponent implements OnInit {
       case 'investigations':
       case 'surgeries': return this.auth.hasPermission('encounters.read');
       case 'finance': return Boolean(basic?.isPrivate) || this.auth.hasPermission('billing.read');
+      case 'medications': return this.auth.hasPermission('encounters.read');
       case 'files': return true;
       default: return false;
     }
@@ -100,7 +102,7 @@ export class PatientProfileComponent implements OnInit {
     this.sectionLoading.set(section);
     const fail = (err: unknown) => {
       this.sectionLoading.set(null);
-      this.toast.error((err as { error?: { detail?: string } })?.error?.detail ?? 'Could not load this section.');
+      void err;
     };
     switch (section) {
       case 'hmo':
@@ -126,6 +128,9 @@ export class PatientProfileComponent implements OnInit {
       case 'finance':
         this.api.patients.financeByNumber(this.patientNumber).subscribe({ next: (x) => { this.finance.set(x); this.finish(section); }, error: fail });
         break;
+      case 'medications':
+        this.api.patients.medicationsByNumber(this.patientNumber).subscribe({ next: (x) => { this.medications.set(x); this.finish(section); }, error: fail });
+        break;
       case 'files':
         this.api.patients.filesByNumber(this.patientNumber).subscribe({ next: (x) => { this.files.set(x); this.finish(section); }, error: fail });
         break;
@@ -140,7 +145,7 @@ export class PatientProfileComponent implements OnInit {
     if (next === this.vitalsPage()) return;
     this.api.patients.vitalsByNumber(this.patientNumber, next, vitals.pageSize).subscribe({
       next: (page) => { this.vitals.set(page); this.vitalsPage.set(next); },
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load vitals.'),
+      error: (err) => void err,
     });
   }
 
@@ -169,7 +174,7 @@ export class PatientProfileComponent implements OnInit {
       : this.api.patients.addEnrollmentByNumber(this.patientNumber, body);
     request.subscribe({
       next: () => { this.toast.success(editId ? 'HMO assignment updated.' : 'HMO assignment added.'); this.resetHmoForm(); this.hmoAssignments.set(null); this.loaded.delete('hmo'); this.loadSection('hmo'); this.loadBasic(); },
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not save the HMO assignment.'),
+      error: (err) => void err,
     });
   }
 
@@ -183,7 +188,7 @@ export class PatientProfileComponent implements OnInit {
     if (!file) { this.toast.error('Choose a file to upload.'); return; }
     this.api.patients.uploadFileByNumber(this.patientNumber, file).subscribe({
       next: () => { this.toast.success('File uploaded.'); this.selectedFile.set(null); this.loadSection('files'); },
-      error: (err) => this.toast.error(err?.error?.detail ?? 'File upload failed.'),
+      error: (err) => void err,
     });
   }
 

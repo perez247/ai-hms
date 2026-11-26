@@ -22,13 +22,16 @@ const NAV: NavItem[] = [
   { label: 'Triage', path: '/nurse/triage', permission: 'vitals.write', roles: ['Nurse'], icon: '🩺', section: 'Clinical' },
   { label: 'Encounters', path: '/doctor/encounters', permission: 'encounters.read', roles: ['Doctor'], icon: '📋', section: 'Clinical' },
   { label: 'Prescriptions', path: '/pharmacy/prescriptions', permission: 'pharmacy.read', roles: ['Pharmacy'], icon: '💊', section: 'Pharmacy' },
-  { label: 'Bills', path: '/finance/bills', permission: 'billing.read', roles: ['Finance'], icon: '🧾', section: 'Finance' },
+  { label: 'Bills', path: '/finance/bills', permission: 'billing.read', roles: ['Finance', 'Pharmacy'], icon: '🧾', section: 'Finance' },
   { label: 'Account book', path: '/finance/account-book', permission: 'accountbook.read', roles: ['Finance'], icon: '📒', section: 'Finance' },
   { label: 'HMO desk', path: '/hmo/authorizations', permission: 'hmo.read', roles: ['HmoOffice'], icon: '🛡️', section: 'HMO' },
   { label: 'HMO partners', path: '/hmos', permission: 'fitness.read', roles: ['Finance', 'HmoOffice'], icon: '🏢', section: 'HMO' },
   { label: 'Fitness', path: '/fitness', permission: 'fitness.read', roles: ['Receptionist', 'Nurse', 'Doctor', 'Finance', 'HmoOffice'], icon: '🏃', section: 'Services' },
   { label: 'Handover', path: '/handover', roles: ['Nurse'], strictRoles: ['Nurse'], icon: '📝', section: 'Services' },
   { label: 'Users', path: '/hr/users', permission: 'hr.users.read', roles: ['HrOffice'], icon: '🧑‍💼', section: 'HR' },
+  { label: 'Lab requests', path: '/lab/tests', permission: 'lab.requests.read', roles: ['Lab', 'Pharmacy', 'Doctor'], icon: '🔬', section: 'Results' },
+  { label: 'Procedure requests', path: '/procedures', permission: 'procedures.requests.read', roles: ['Doctor', 'Pharmacy'], icon: '🧪', section: 'Results' },
+  { label: 'Stocks', path: '/stocks', permission: 'stock.read', roles: ['Pharmacy', 'Admin'], icon: '📦', section: 'Catalogue' },
   { label: 'Configuration', path: '/admin/config', permission: 'admin.fees.manage', roles: ['Admin'], icon: '⚙️', section: 'Admin' },
 ];
 

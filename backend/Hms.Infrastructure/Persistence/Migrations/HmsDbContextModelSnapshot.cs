@@ -44,6 +44,9 @@ namespace Hms.Infrastructure.Persistence.Migrations
             modelBuilder.HasSequence("patient_number_seq", "clinic")
                 .StartsAt(1000L);
 
+            modelBuilder.HasSequence("service_request_number_seq", "clinic")
+                .StartsAt(1000L);
+
             modelBuilder.Entity("Hms.Domain.Entities.AccountBookEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -114,6 +117,11 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("reference");
+
+                    b.Property<string>("Source")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("source");
 
                     b.HasKey("Id")
                         .HasName("pk_account_book_entries");
@@ -277,6 +285,16 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("duration_minutes");
 
+                    b.Property<string>("FundingSource")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("funding_source");
+
+                    b.Property<Guid?>("HmoEnrollmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hmo_enrollment_id");
+
                     b.Property<Guid>("PatientId")
                         .HasColumnType("uuid")
                         .HasColumnName("patient_id");
@@ -307,6 +325,9 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_appointments_appointment_number");
 
+                    b.HasIndex("HmoEnrollmentId")
+                        .HasDatabaseName("ix_appointments_hmo_enrollment_id");
+
                     b.HasIndex("DoctorId", "ScheduledAt")
                         .IsUnique()
                         .HasDatabaseName("ix_appointments_doctor_id_scheduled_at")
@@ -318,6 +339,8 @@ namespace Hms.Infrastructure.Persistence.Migrations
                     b.ToTable("appointments", "clinic", t =>
                         {
                             t.HasCheckConstraint("ck_appointment_duration", "duration_minutes > 0");
+
+                            t.HasCheckConstraint("ck_appointment_funding", "(funding_source = 'Private' AND hmo_enrollment_id IS NULL) OR (funding_source = 'Hmo' AND hmo_enrollment_id IS NOT NULL)");
                         });
                 });
 
@@ -504,6 +527,27 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("currency");
 
+                    b.Property<int?>("DebtOwner")
+                        .HasColumnType("integer")
+                        .HasColumnName("debt_owner");
+
+                    b.Property<string>("DebtReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("debt_reason");
+
+                    b.Property<DateTimeOffset?>("DebtRecordedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("debt_recorded_at");
+
+                    b.Property<Guid?>("DebtRecordedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("debt_recorded_by");
+
+                    b.Property<DateTimeOffset?>("DebtSettledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("debt_settled_at");
+
                     b.Property<decimal>("DiscountTotal")
                         .HasPrecision(14, 2)
                         .HasColumnType("numeric(14,2)")
@@ -549,6 +593,10 @@ namespace Hms.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("HmoSubmittedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("hmo_submitted_at");
+
+                    b.Property<bool>("IsDebt")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_debt");
 
                     b.Property<string>("Kind")
                         .IsRequired()
@@ -665,7 +713,7 @@ namespace Hms.Infrastructure.Persistence.Migrations
 
                     b.ToTable("bills", "clinic", t =>
                         {
-                            t.HasCheckConstraint("ck_bill_context", "(kind = 'OutpatientEncounter' AND encounter_id IS NOT NULL) OR (kind = 'Emergency' AND encounter_id IS NOT NULL) OR (kind = 'InpatientAdmission' AND admission_id IS NOT NULL) OR (kind = 'Appointment' AND appointment_id IS NOT NULL) OR (kind = 'Registration' AND registration_period_id IS NOT NULL) OR (kind = 'FitnessCertificate' AND fitness_certificate_id IS NOT NULL) OR (kind = 'Manual')");
+                            t.HasCheckConstraint("ck_bill_context", "(kind = 'Visit' AND (encounter_id IS NOT NULL OR admission_id IS NOT NULL OR appointment_id IS NOT NULL)) OR (kind = 'OutpatientEncounter' AND encounter_id IS NOT NULL) OR (kind = 'Emergency' AND encounter_id IS NOT NULL) OR (kind = 'InpatientAdmission' AND admission_id IS NOT NULL) OR (kind = 'Appointment' AND appointment_id IS NOT NULL) OR (kind = 'Registration' AND registration_period_id IS NOT NULL) OR (kind = 'FitnessCertificate' AND fitness_certificate_id IS NOT NULL) OR (kind = 'Manual')");
 
                             t.HasCheckConstraint("ck_bill_finance_approval", "status NOT IN ('Approved', 'Paid') OR finance_approved_at IS NOT NULL");
 
@@ -1038,10 +1086,6 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .HasColumnType("numeric(14,2)")
                         .HasColumnName("hmo_amount");
 
-                    b.Property<Guid>("MedicationId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("medication_id");
-
                     b.Property<decimal>("PatientAmount")
                         .HasPrecision(14, 2)
                         .HasColumnType("numeric(14,2)")
@@ -1055,6 +1099,10 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .HasPrecision(18, 3)
                         .HasColumnType("numeric(18,3)")
                         .HasColumnName("quantity");
+
+                    b.Property<Guid>("StockItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("stock_item_id");
 
                     b.Property<Guid?>("TariffItemId")
                         .HasColumnType("uuid")
@@ -1071,11 +1119,11 @@ namespace Hms.Infrastructure.Persistence.Migrations
                     b.HasIndex("DispenseId")
                         .HasDatabaseName("ix_dispense_items_dispense_id");
 
-                    b.HasIndex("MedicationId")
-                        .HasDatabaseName("ix_dispense_items_medication_id");
-
                     b.HasIndex("PrescriptionItemId")
                         .HasDatabaseName("ix_dispense_items_prescription_item_id");
+
+                    b.HasIndex("StockItemId")
+                        .HasDatabaseName("ix_dispense_items_stock_item_id");
 
                     b.HasIndex("TariffItemId")
                         .HasDatabaseName("ix_dispense_items_tariff_item_id");
@@ -1103,10 +1151,10 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("appointment_id");
 
-                    b.Property<string>("ChiefComplaint")
+                    b.Property<string>("ClerkingDetails")
                         .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("chief_complaint");
+                        .HasColumnType("text")
+                        .HasColumnName("clerking_details");
 
                     b.Property<DateTimeOffset?>("ClosedAt")
                         .HasColumnType("timestamp with time zone")
@@ -1125,6 +1173,11 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("diagnosis");
 
+                    b.Property<string>("Disposition")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("disposition");
+
                     b.Property<Guid>("DoctorId")
                         .HasColumnType("uuid")
                         .HasColumnName("doctor_id");
@@ -1135,6 +1188,27 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("encounter_number");
 
+                    b.Property<string>("Examination")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("examination");
+
+                    b.Property<string>("FamilyHistory")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("family_history");
+
+                    b.Property<string>("FundingSource")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("funding_source");
+
+                    b.Property<string>("HistoryOfPresentingComplaint")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("history_of_presenting_complaint");
+
                     b.Property<Guid?>("HmoEnrollmentId")
                         .HasColumnType("uuid")
                         .HasColumnName("hmo_enrollment_id");
@@ -1143,14 +1217,23 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_emergency");
 
-                    b.Property<string>("Notes")
+                    b.Property<string>("PastMedicalSurgicalHistory")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)")
-                        .HasColumnName("notes");
+                        .HasColumnName("past_medical_surgical_history");
 
                     b.Property<Guid>("PatientId")
                         .HasColumnType("uuid")
                         .HasColumnName("patient_id");
+
+                    b.Property<string>("PresentingComplaint")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("presenting_complaint");
+
+                    b.Property<int?>("PresentingComplaintDurationDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("presenting_complaint_duration_days");
 
                     b.Property<DateTimeOffset>("StartedAt")
                         .HasColumnType("timestamp with time zone")
@@ -1199,6 +1282,8 @@ namespace Hms.Infrastructure.Persistence.Migrations
                     b.ToTable("encounters", "clinic", t =>
                         {
                             t.HasCheckConstraint("ck_encounter_admission", "(type = 'Outpatient' AND admission_id IS NULL) OR (type = 'Inpatient' AND admission_id IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_encounter_funding", "(funding_source = 'Private' AND hmo_enrollment_id IS NULL) OR (funding_source = 'Hmo' AND hmo_enrollment_id IS NOT NULL)");
                         });
                 });
 
@@ -1834,57 +1919,6 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("Hms.Domain.Entities.InvestigationCatalogItem", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<string>("Category")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("category");
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("code");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("name");
-
-                    b.Property<decimal>("Price")
-                        .HasPrecision(14, 2)
-                        .HasColumnType("numeric(14,2)")
-                        .HasColumnName("price");
-
-                    b.Property<string>("TariffCode")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("tariff_code");
-
-                    b.HasKey("Id")
-                        .HasName("pk_investigation_catalog_items");
-
-                    b.HasIndex("Code")
-                        .IsUnique()
-                        .HasDatabaseName("ix_investigation_catalog_items_code");
-
-                    b.ToTable("investigation_catalog_items", "clinic", t =>
-                        {
-                            t.HasCheckConstraint("ck_investigation_price", "price >= 0");
-                        });
-                });
-
             modelBuilder.Entity("Hms.Domain.Entities.InvestigationOrder", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1994,93 +2028,69 @@ namespace Hms.Infrastructure.Persistence.Migrations
                     b.ToTable("investigation_participants", "clinic");
                 });
 
-            modelBuilder.Entity("Hms.Domain.Entities.Medication", b =>
+            modelBuilder.Entity("Hms.Domain.Entities.ItemPrice", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<string>("Code")
+                    b.Property<int>("CoveragePercent")
+                        .HasColumnType("integer")
+                        .HasColumnName("coverage_percent");
+
+                    b.Property<DateOnly>("EffectiveFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_from");
+
+                    b.Property<DateOnly?>("EffectiveTo")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_to");
+
+                    b.Property<string>("FundingSource")
                         .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("code");
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("funding_source");
 
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at");
-
-                    b.Property<string>("Form")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("form");
-
-                    b.Property<string>("GenericName")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("generic_name");
+                    b.Property<Guid?>("HmoCompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hmo_company_id");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
 
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("name");
+                    b.Property<Guid>("PayerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("payer_id");
 
-                    b.Property<decimal>("ReorderLevel")
-                        .HasPrecision(14, 2)
-                        .HasColumnType("numeric(14,2)")
-                        .HasColumnName("reorder_level");
+                    b.Property<bool>("RequiresPriorAuthorization")
+                        .HasColumnType("boolean")
+                        .HasColumnName("requires_prior_authorization");
 
-                    b.Property<decimal>("StockOnHand")
-                        .HasPrecision(14, 2)
-                        .HasColumnType("numeric(14,2)")
-                        .HasColumnName("stock_on_hand");
-
-                    b.Property<string>("Strength")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("strength");
-
-                    b.Property<string>("TariffCode")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("tariff_code");
-
-                    b.Property<string>("Unit")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("unit");
+                    b.Property<Guid>("StockItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("stock_item_id");
 
                     b.Property<decimal>("UnitPrice")
                         .HasPrecision(14, 2)
                         .HasColumnType("numeric(14,2)")
                         .HasColumnName("unit_price");
 
-                    b.Property<DateTimeOffset?>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at");
-
                     b.HasKey("Id")
-                        .HasName("pk_medications");
+                        .HasName("pk_stock_item_prices");
 
-                    b.HasIndex("Code")
+                    b.HasIndex("HmoCompanyId")
+                        .HasDatabaseName("ix_stock_item_prices_hmo_company_id");
+
+                    b.HasIndex("StockItemId", "PayerId")
                         .IsUnique()
-                        .HasDatabaseName("ix_medications_code");
+                        .HasDatabaseName("ix_stock_item_prices_stock_item_id_payer_id");
 
-                    b.HasIndex("Name", "IsActive")
-                        .HasDatabaseName("ix_medications_name_is_active");
-
-                    b.ToTable("medications", "clinic", t =>
+                    b.ToTable("stock_item_prices", "clinic", t =>
                         {
-                            t.HasCheckConstraint("ck_medication_price", "unit_price >= 0");
-
-                            t.HasCheckConstraint("ck_medication_stock", "stock_on_hand >= 0");
+                            t.HasCheckConstraint("ck_item_price_amount", "unit_price >= 0 AND coverage_percent >= 0 AND coverage_percent <= 100");
                         });
                 });
 
@@ -2173,6 +2183,11 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("address");
 
+                    b.Property<string>("Allergy")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("allergy");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -2200,6 +2215,11 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("first_name");
 
+                    b.Property<string>("HomeTown")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("home_town");
+
                     b.Property<string>("LastName")
                         .IsRequired()
                         .HasMaxLength(1000)
@@ -2221,6 +2241,11 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("next_of_kin_phone");
 
+                    b.Property<string>("Occupation")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("occupation");
+
                     b.Property<string>("PatientNumber")
                         .IsRequired()
                         .HasMaxLength(1000)
@@ -2241,6 +2266,11 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("sex");
+
+                    b.Property<string>("StateOfOrigin")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("state_of_origin");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -2599,10 +2629,6 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_prn");
 
-                    b.Property<Guid>("MedicationId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("medication_id");
-
                     b.Property<Guid>("PrescriptionId")
                         .HasColumnType("uuid")
                         .HasColumnName("prescription_id");
@@ -2623,14 +2649,18 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("route");
 
+                    b.Property<Guid>("StockItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("stock_item_id");
+
                     b.HasKey("Id")
                         .HasName("pk_prescription_items");
 
-                    b.HasIndex("MedicationId")
-                        .HasDatabaseName("ix_prescription_items_medication_id");
-
                     b.HasIndex("PrescriptionId")
                         .HasDatabaseName("ix_prescription_items_prescription_id");
+
+                    b.HasIndex("StockItemId")
+                        .HasDatabaseName("ix_prescription_items_stock_item_id");
 
                     b.ToTable("prescription_items", "clinic", t =>
                         {
@@ -2728,6 +2758,263 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Hms.Domain.Entities.ServiceRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("BillLineCreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("bill_line_created_at");
+
+                    b.Property<string>("ClinicalNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("clinical_note");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid>("DoctorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("doctor_id");
+
+                    b.Property<Guid>("EncounterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("encounter_id");
+
+                    b.Property<string>("FundingSource")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("funding_source");
+
+                    b.Property<Guid?>("HmoCompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hmo_company_id");
+
+                    b.Property<Guid?>("HmoEnrollmentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hmo_enrollment_id");
+
+                    b.Property<Guid?>("ItemPriceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("item_price_id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("kind");
+
+                    b.Property<DateTimeOffset>("OrderedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ordered_at");
+
+                    b.Property<Guid>("PatientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("patient_id");
+
+                    b.Property<DateTimeOffset?>("PerformedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("performed_at");
+
+                    b.Property<string>("Priority")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("priority");
+
+                    b.Property<string>("RequestNumber")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("request_number");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("StockItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("stock_item_id");
+
+                    b.Property<decimal>("UnitPriceSnapshot")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("unit_price_snapshot");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_service_requests");
+
+                    b.HasIndex("PatientId")
+                        .HasDatabaseName("ix_service_requests_patient_id");
+
+                    b.HasIndex("RequestNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ix_service_requests_request_number");
+
+                    b.HasIndex("StockItemId")
+                        .HasDatabaseName("ix_service_requests_stock_item_id");
+
+                    b.HasIndex("Kind", "Status")
+                        .HasDatabaseName("ix_service_requests_kind_status");
+
+                    b.HasIndex("EncounterId", "Kind", "Status")
+                        .HasDatabaseName("ix_service_requests_encounter_id_kind_status");
+
+                    b.ToTable("service_requests", "clinic", t =>
+                        {
+                            t.HasCheckConstraint("ck_service_request_price", "unit_price_snapshot >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Hms.Domain.Entities.ServiceResult", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool?>("AbnormalFlag")
+                        .HasColumnType("boolean")
+                        .HasColumnName("abnormal_flag");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("EnteredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("entered_at");
+
+                    b.Property<Guid?>("EnteredById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("entered_by_id");
+
+                    b.Property<string>("Findings")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("findings");
+
+                    b.Property<DateTimeOffset?>("PerformedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("performed_at");
+
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("request_id");
+
+                    b.Property<string>("ResultText")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("result_text");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("StructuredJson")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("structured_json");
+
+                    b.Property<DateTimeOffset?>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("submitted_at");
+
+                    b.Property<Guid?>("SubmittedById")
+                        .HasColumnType("uuid")
+                        .HasColumnName("submitted_by_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_service_results");
+
+                    b.HasIndex("RequestId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_service_results_request_id");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_service_results_status");
+
+                    b.ToTable("service_results", "clinic");
+                });
+
+            modelBuilder.Entity("Hms.Domain.Entities.ServiceResultRevision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("ActorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("ActorRole")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("actor_role");
+
+                    b.Property<string>("AfterJson")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("after_json");
+
+                    b.Property<string>("BeforeJson")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("before_json");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("reason");
+
+                    b.Property<Guid>("ResultId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("result_id");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_service_result_revisions");
+
+                    b.HasIndex("ResultId", "Version")
+                        .IsUnique()
+                        .HasDatabaseName("ix_service_result_revisions_result_id_version");
+
+                    b.ToTable("service_result_revisions", "clinic");
+                });
+
             modelBuilder.Entity("Hms.Domain.Entities.ShiftHandover", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2765,6 +3052,101 @@ namespace Hms.Infrastructure.Persistence.Migrations
                     b.ToTable("shift_handovers", "clinic");
                 });
 
+            modelBuilder.Entity("Hms.Domain.Entities.StockItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Category")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("category");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Form")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("form");
+
+                    b.Property<string>("GenericName")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("generic_name");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("ItemType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("item_type");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("name");
+
+                    b.Property<decimal>("Quantity")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("quantity");
+
+                    b.Property<string>("Strength")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("strength");
+
+                    b.Property<string>("TariffCode")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("tariff_code");
+
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("unit");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_stock_item");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("ix_stock_item_code");
+
+                    b.HasIndex("Name", "IsActive")
+                        .HasDatabaseName("ix_stock_item_name_is_active");
+
+                    b.ToTable("stock_item", "clinic", t =>
+                        {
+                            t.HasCheckConstraint("ck_stock_item_code", "code <> ''");
+
+                            t.HasCheckConstraint("ck_stock_item_quantity", "quantity >= 0");
+                        });
+                });
+
             modelBuilder.Entity("Hms.Domain.Entities.StockMovement", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2779,10 +3161,6 @@ namespace Hms.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("uuid")
                         .HasColumnName("created_by");
-
-                    b.Property<Guid>("MedicationId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("medication_id");
 
                     b.Property<string>("MovementType")
                         .IsRequired()
@@ -2809,6 +3187,10 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("reference_type");
 
+                    b.Property<Guid>("StockItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("stock_item_id");
+
                     b.Property<decimal?>("UnitCost")
                         .HasPrecision(14, 2)
                         .HasColumnType("numeric(14,2)")
@@ -2817,8 +3199,8 @@ namespace Hms.Infrastructure.Persistence.Migrations
                     b.HasKey("Id")
                         .HasName("pk_stock_movements");
 
-                    b.HasIndex("MedicationId", "CreatedAt")
-                        .HasDatabaseName("ix_stock_movements_medication_id_created_at");
+                    b.HasIndex("StockItemId", "CreatedAt")
+                        .HasDatabaseName("ix_stock_movements_stock_item_id_created_at");
 
                     b.ToTable("stock_movements", "clinic");
                 });
@@ -2890,52 +3272,6 @@ namespace Hms.Infrastructure.Persistence.Migrations
                     b.ToTable("surgery_cases", "clinic");
                 });
 
-            modelBuilder.Entity("Hms.Domain.Entities.SurgeryCatalogItem", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id");
-
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("code");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("name");
-
-                    b.Property<decimal>("Price")
-                        .HasPrecision(14, 2)
-                        .HasColumnType("numeric(14,2)")
-                        .HasColumnName("price");
-
-                    b.Property<string>("TariffCode")
-                        .HasMaxLength(1000)
-                        .HasColumnType("character varying(1000)")
-                        .HasColumnName("tariff_code");
-
-                    b.HasKey("Id")
-                        .HasName("pk_surgery_catalog_items");
-
-                    b.HasIndex("Code")
-                        .IsUnique()
-                        .HasDatabaseName("ix_surgery_catalog_items_code");
-
-                    b.ToTable("surgery_catalog_items", "clinic", t =>
-                        {
-                            t.HasCheckConstraint("ck_surgery_price", "price >= 0");
-                        });
-                });
-
             modelBuilder.Entity("Hms.Domain.Entities.SurgeryParticipant", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2992,10 +3328,6 @@ namespace Hms.Infrastructure.Persistence.Migrations
                     b.Property<int?>("Diastolic")
                         .HasColumnType("integer")
                         .HasColumnName("diastolic");
-
-                    b.Property<Guid?>("EncounterId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("encounter_id");
 
                     b.Property<decimal?>("HeightCm")
                         .HasPrecision(14, 2)
@@ -3054,9 +3386,6 @@ namespace Hms.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("NurseId")
                         .HasDatabaseName("ix_vitals_nurse_id");
-
-                    b.HasIndex("EncounterId", "RecordedAt")
-                        .HasDatabaseName("ix_vitals_encounter_id_recorded_at");
 
                     b.HasIndex("PatientId", "RecordedAt")
                         .HasDatabaseName("ix_vitals_patient_id_recorded_at");
@@ -3514,12 +3843,19 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_appointments_users_doctor_id");
 
+                    b.HasOne("Hms.Domain.Entities.PatientHmoEnrollment", "HmoEnrollment")
+                        .WithMany()
+                        .HasForeignKey("HmoEnrollmentId")
+                        .HasConstraintName("fk_appointments_patient_hmo_enrollments_hmo_enrollment_id");
+
                     b.HasOne("Hms.Domain.Entities.Patient", "Patient")
                         .WithMany()
                         .HasForeignKey("PatientId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_appointments_patients_patient_id");
+
+                    b.Navigation("HmoEnrollment");
 
                     b.Navigation("Patient");
                 });
@@ -3708,19 +4044,19 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_dispense_items_dispenses_dispense_id");
 
-                    b.HasOne("Hms.Domain.Entities.Medication", "Medication")
-                        .WithMany()
-                        .HasForeignKey("MedicationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_dispense_items_medications_medication_id");
-
                     b.HasOne("Hms.Domain.Entities.PrescriptionItem", "PrescriptionItem")
                         .WithMany()
                         .HasForeignKey("PrescriptionItemId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_dispense_items_prescription_items_prescription_item_id");
+
+                    b.HasOne("Hms.Domain.Entities.StockItem", "StockItem")
+                        .WithMany()
+                        .HasForeignKey("StockItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_dispense_items_stock_item_stock_item_id");
 
                     b.HasOne("Hms.Domain.Entities.HmoTariffItem", "TariffItem")
                         .WithMany()
@@ -3730,9 +4066,9 @@ namespace Hms.Infrastructure.Persistence.Migrations
 
                     b.Navigation("Dispense");
 
-                    b.Navigation("Medication");
-
                     b.Navigation("PrescriptionItem");
+
+                    b.Navigation("StockItem");
 
                     b.Navigation("TariffItem");
                 });
@@ -3887,12 +4223,12 @@ namespace Hms.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Hms.Domain.Entities.InvestigationOrder", b =>
                 {
-                    b.HasOne("Hms.Domain.Entities.InvestigationCatalogItem", "CatalogItem")
+                    b.HasOne("Hms.Domain.Entities.StockItem", "CatalogItem")
                         .WithMany()
                         .HasForeignKey("CatalogItemId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_investigation_orders_investigation_catalog_items_catalog_it");
+                        .HasConstraintName("fk_investigation_orders_stock_item_catalog_item_id");
 
                     b.HasOne("Hms.Infrastructure.Identity.AppUser", null)
                         .WithMany()
@@ -3930,6 +4266,26 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_investigation_participants_users_user_id");
 
                     b.Navigation("InvestigationOrder");
+                });
+
+            modelBuilder.Entity("Hms.Domain.Entities.ItemPrice", b =>
+                {
+                    b.HasOne("Hms.Domain.Entities.HmoCompany", "HmoCompany")
+                        .WithMany()
+                        .HasForeignKey("HmoCompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_stock_item_prices_hmo_companies_hmo_company_id");
+
+                    b.HasOne("Hms.Domain.Entities.StockItem", "StockItem")
+                        .WithMany("Prices")
+                        .HasForeignKey("StockItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_stock_item_prices_stock_item_stock_item_id");
+
+                    b.Navigation("HmoCompany");
+
+                    b.Navigation("StockItem");
                 });
 
             modelBuilder.Entity("Hms.Domain.Entities.MedicationAdministration", b =>
@@ -4055,13 +4411,6 @@ namespace Hms.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Hms.Domain.Entities.PrescriptionItem", b =>
                 {
-                    b.HasOne("Hms.Domain.Entities.Medication", "Medication")
-                        .WithMany()
-                        .HasForeignKey("MedicationId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_prescription_items_medications_medication_id");
-
                     b.HasOne("Hms.Domain.Entities.Prescription", "Prescription")
                         .WithMany("Items")
                         .HasForeignKey("PrescriptionId")
@@ -4069,9 +4418,16 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_prescription_items_prescriptions_prescription_id");
 
-                    b.Navigation("Medication");
+                    b.HasOne("Hms.Domain.Entities.StockItem", "StockItem")
+                        .WithMany()
+                        .HasForeignKey("StockItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_prescription_items_stock_item_stock_item_id");
 
                     b.Navigation("Prescription");
+
+                    b.Navigation("StockItem");
                 });
 
             modelBuilder.Entity("Hms.Domain.Entities.PriorAuthorization", b =>
@@ -4120,6 +4476,60 @@ namespace Hms.Infrastructure.Persistence.Migrations
                     b.Navigation("Patient");
                 });
 
+            modelBuilder.Entity("Hms.Domain.Entities.ServiceRequest", b =>
+                {
+                    b.HasOne("Hms.Domain.Entities.Encounter", "Encounter")
+                        .WithMany("ServiceRequests")
+                        .HasForeignKey("EncounterId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_service_requests_encounters_encounter_id");
+
+                    b.HasOne("Hms.Domain.Entities.Patient", "Patient")
+                        .WithMany()
+                        .HasForeignKey("PatientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_service_requests_patients_patient_id");
+
+                    b.HasOne("Hms.Domain.Entities.StockItem", "StockItem")
+                        .WithMany()
+                        .HasForeignKey("StockItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_service_requests_stock_item_stock_item_id");
+
+                    b.Navigation("Encounter");
+
+                    b.Navigation("Patient");
+
+                    b.Navigation("StockItem");
+                });
+
+            modelBuilder.Entity("Hms.Domain.Entities.ServiceResult", b =>
+                {
+                    b.HasOne("Hms.Domain.Entities.ServiceRequest", "Request")
+                        .WithMany()
+                        .HasForeignKey("RequestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_service_results_service_requests_request_id");
+
+                    b.Navigation("Request");
+                });
+
+            modelBuilder.Entity("Hms.Domain.Entities.ServiceResultRevision", b =>
+                {
+                    b.HasOne("Hms.Domain.Entities.ServiceResult", "Result")
+                        .WithMany()
+                        .HasForeignKey("ResultId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_service_result_revisions_service_results_result_id");
+
+                    b.Navigation("Result");
+                });
+
             modelBuilder.Entity("Hms.Domain.Entities.ShiftHandover", b =>
                 {
                     b.HasOne("Hms.Infrastructure.Identity.AppUser", null)
@@ -4132,24 +4542,24 @@ namespace Hms.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Hms.Domain.Entities.StockMovement", b =>
                 {
-                    b.HasOne("Hms.Domain.Entities.Medication", "Medication")
+                    b.HasOne("Hms.Domain.Entities.StockItem", "StockItem")
                         .WithMany()
-                        .HasForeignKey("MedicationId")
+                        .HasForeignKey("StockItemId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_stock_movements_medications_medication_id");
+                        .HasConstraintName("fk_stock_movements_stock_item_stock_item_id");
 
-                    b.Navigation("Medication");
+                    b.Navigation("StockItem");
                 });
 
             modelBuilder.Entity("Hms.Domain.Entities.SurgeryCase", b =>
                 {
-                    b.HasOne("Hms.Domain.Entities.SurgeryCatalogItem", "CatalogItem")
+                    b.HasOne("Hms.Domain.Entities.StockItem", "CatalogItem")
                         .WithMany()
                         .HasForeignKey("CatalogItemId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_surgery_cases_surgery_catalog_items_catalog_item_id");
+                        .HasConstraintName("fk_surgery_cases_stock_item_catalog_item_id");
 
                     b.HasOne("Hms.Domain.Entities.Encounter", "Encounter")
                         .WithMany("Surgeries")
@@ -4191,12 +4601,6 @@ namespace Hms.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Hms.Domain.Entities.Vital", b =>
                 {
-                    b.HasOne("Hms.Domain.Entities.Encounter", "Encounter")
-                        .WithMany("Vitals")
-                        .HasForeignKey("EncounterId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .HasConstraintName("fk_vitals_encounters_encounter_id");
-
                     b.HasOne("Hms.Infrastructure.Identity.AppUser", null)
                         .WithMany()
                         .HasForeignKey("NurseId")
@@ -4205,13 +4609,11 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_vitals_users_nurse_id");
 
                     b.HasOne("Hms.Domain.Entities.Patient", "Patient")
-                        .WithMany()
+                        .WithMany("Vitals")
                         .HasForeignKey("PatientId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_vitals_patients_patient_id");
-
-                    b.Navigation("Encounter");
 
                     b.Navigation("Patient");
                 });
@@ -4321,9 +4723,9 @@ namespace Hms.Infrastructure.Persistence.Migrations
 
                     b.Navigation("Prescriptions");
 
-                    b.Navigation("Surgeries");
+                    b.Navigation("ServiceRequests");
 
-                    b.Navigation("Vitals");
+                    b.Navigation("Surgeries");
                 });
 
             modelBuilder.Entity("Hms.Domain.Entities.FitnessCertificate", b =>
@@ -4355,6 +4757,8 @@ namespace Hms.Infrastructure.Persistence.Migrations
                     b.Navigation("HmoEnrollments");
 
                     b.Navigation("RegistrationPeriods");
+
+                    b.Navigation("Vitals");
                 });
 
             modelBuilder.Entity("Hms.Domain.Entities.Prescription", b =>
@@ -4362,6 +4766,11 @@ namespace Hms.Infrastructure.Persistence.Migrations
                     b.Navigation("Dispenses");
 
                     b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("Hms.Domain.Entities.StockItem", b =>
+                {
+                    b.Navigation("Prices");
                 });
 
             modelBuilder.Entity("Hms.Domain.Entities.SurgeryCase", b =>

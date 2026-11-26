@@ -12,4 +12,5 @@ public interface IPharmacyService
     Task<PrescriptionPriceOptionsDto> GetPriceOptionsAsync(Guid encounterId, CancellationToken cancellationToken = default);
     Task<DispenseResultDto> DispenseAsync(DispenseRequest request, CancellationToken cancellationToken = default);
     Task ConfirmTariffAsync(Guid billId, ConfirmTariffRequest request, CancellationToken cancellationToken = default);
+    Task<PharmacyPrescriptionDto> AdjustPrescriptionQuantityAsync(Guid prescriptionId, Guid itemId, decimal quantityPrescribed, CancellationToken cancellationToken = default);
 }

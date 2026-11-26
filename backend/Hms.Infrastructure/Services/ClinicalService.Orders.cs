@@ -13,6 +13,34 @@ namespace Hms.Infrastructure.Services;
 public sealed partial class ClinicalService
 {
 
+    /// <summary>Paginated returned results for one encounter; used by the previous-encounter view.</summary>
+    public async Task<PagedResult<ServiceRequestSummaryDto>> GetEncounterResultsAsync(Guid encounterId, int page, int pageSize, CancellationToken cancellationToken = default)
+    {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 50);
+        if (!await db.Encounters.AnyAsync(x => x.Id == encounterId, cancellationToken))
+            throw new AppNotFoundException("Encounter not found.");
+
+        var query = db.ServiceRequests.AsNoTracking()
+            .Where(x => x.EncounterId == encounterId
+                && db.ServiceResults.Any(r => r.RequestId == x.Id && r.Status != ServiceResultStatus.Pending));
+        var total = await query.CountAsync(cancellationToken);
+        var requests = await query.Include(x => x.StockItem)
+            .OrderByDescending(x => x.PerformedAt ?? x.OrderedAt)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .ToListAsync(cancellationToken);
+        var requestIds = requests.Select(x => x.Id).ToList();
+        var results = await db.ServiceResults.AsNoTracking().Where(x => requestIds.Contains(x.RequestId))
+            .ToDictionaryAsync(x => x.RequestId, cancellationToken);
+
+        return new PagedResult<ServiceRequestSummaryDto>(requests.Select(x => new ServiceRequestSummaryDto(
+            x.Id, x.RequestNumber, x.Kind, x.StockItem?.Name ?? "Item", x.Status, results.GetValueOrDefault(x.Id)?.Status,
+            results.GetValueOrDefault(x.Id)?.ResultText, results.GetValueOrDefault(x.Id)?.Findings,
+            x.UnitPriceSnapshot, x.FundingSource, results.GetValueOrDefault(x.Id)?.AbnormalFlag,
+            results.GetValueOrDefault(x.Id)?.PerformedAt, x.Priority, x.ClinicalNote, x.StockItemId)).ToList(),
+            page, pageSize, total);
+    }
+
     public async Task<VitalDto> RecordVitalsAsync(RecordVitalsRequest request, CancellationToken cancellationToken = default)
     {
         var encounter = await db.Encounters.SingleOrDefaultAsync(x => x.Id == request.EncounterId, cancellationToken)
@@ -24,7 +52,6 @@ public sealed partial class ClinicalService
         var vital = new Vital
         {
             PatientId = encounter.PatientId,
-            EncounterId = encounter.Id,
             NurseId = user.RequireId(),
             TemperatureC = request.TemperatureC,
             Systolic = request.Systolic,
@@ -82,7 +109,11 @@ public sealed partial class ClinicalService
         db.Prescriptions.Add(prescription);
         await db.SaveChangesAsync(cancellationToken);
         await audit.WriteAsync("prescription.created", nameof(Prescription), prescription.Id.ToString(), encounter.PatientId, encounter.Id, cancellationToken: cancellationToken);
-        return new PrescriptionSummaryDto(prescription.Id, prescription.Status, prescription.CreatedAt, prescription.Items.Count);
+        var savedItems = prescription.Items.Select(item => new PrescriptionItemSummaryDto(item.Id,
+            medications.GetValueOrDefault(item.MedicationId)?.Name ?? "Medication", item.Dose, item.Route,
+            item.Frequency, item.DurationDays, item.QuantityPrescribed, item.QuantityDispensed, item.Instructions,
+            item.StockItemId)).ToList();
+        return new PrescriptionSummaryDto(prescription.Id, prescription.Status, prescription.CreatedAt, prescription.Items.Count, savedItems);
     }
 
     public async Task<InvestigationSummaryDto> CreateInvestigationAsync(CreateInvestigationRequest request, CancellationToken cancellationToken = default)
@@ -121,10 +152,9 @@ public sealed partial class ClinicalService
         order.ReferralDestination = request.ReferralDestination;
         await AddParticipantsAsync(request.ParticipantUserIds, order, cancellationToken);
 
-        var bill = order.Encounter!.AdmissionId is null
-            ? await billing.GetOrCreateEncounterBillAsync(order.Encounter, cancellationToken)
-            : await billing.GetOrCreateAdmissionBillAsync(await db.Admissions.SingleAsync(x => x.Id == order.Encounter.AdmissionId, cancellationToken), cancellationToken);
-        await billing.AddChargeAsync(bill.Id, BillLineCategory.Investigation, order.CatalogItem!.Name, 1m, order.CatalogItem.Price,
+        var bill = await billing.GetOrCreateVisitBillAsync(order.Encounter!, cancellationToken);
+        var price = await PrivatePriceAsync(order.CatalogItemId, cancellationToken);
+        await billing.AddChargeAsync(bill.Id, BillLineCategory.Investigation, order.CatalogItem!.Name, 1m, price,
             ChargeSourceType.InvestigationOrder, order.Id, $"investigation:{order.Id}", order.EncounterId,
             order.Encounter.AdmissionId, order.CatalogItem.TariffCode, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
@@ -168,10 +198,9 @@ public sealed partial class ClinicalService
         surgery.ReportFileRef = request.ReportFileRef;
         await AddParticipantsAsync(request.ParticipantUserIds, surgery, cancellationToken);
 
-        var bill = surgery.Encounter!.AdmissionId is null
-            ? await billing.GetOrCreateEncounterBillAsync(surgery.Encounter, cancellationToken)
-            : await billing.GetOrCreateAdmissionBillAsync(await db.Admissions.SingleAsync(x => x.Id == surgery.Encounter.AdmissionId, cancellationToken), cancellationToken);
-        await billing.AddChargeAsync(bill.Id, BillLineCategory.Surgery, surgery.CatalogItem!.Name, 1m, surgery.CatalogItem.Price,
+        var bill = await billing.GetOrCreateVisitBillAsync(surgery.Encounter!, cancellationToken);
+        var price = await PrivatePriceAsync(surgery.CatalogItemId, cancellationToken);
+        await billing.AddChargeAsync(bill.Id, BillLineCategory.Surgery, surgery.CatalogItem!.Name, 1m, price,
             ChargeSourceType.SurgeryCase, surgery.Id, $"surgery:{surgery.Id}", surgery.EncounterId,
             surgery.Encounter.AdmissionId, surgery.CatalogItem.TariffCode, cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
@@ -184,7 +213,7 @@ public sealed partial class ClinicalService
         var dispenseItem = await db.DispenseItems
             .Include(x => x.Dispense).ThenInclude(x => x!.Encounter)
             .Include(x => x.PrescriptionItem)
-            .Include(x => x.Medication)
+            .Include(x => x.StockItem)
             .SingleOrDefaultAsync(x => x.Id == request.DispenseItemId, cancellationToken)
             ?? throw new AppNotFoundException("Dispense item not found.");
         var encounter = dispenseItem.Dispense!.Encounter!;
@@ -206,16 +235,21 @@ public sealed partial class ClinicalService
 
         if (encounter.AdmissionId is not null)
         {
-            var admission = await db.Admissions.SingleAsync(x => x.Id == encounter.AdmissionId, cancellationToken);
-            var bill = await billing.GetOrCreateAdmissionBillAsync(admission, cancellationToken);
+            var bill = await billing.GetOrCreateVisitBillAsync(encounter, cancellationToken);
             await billing.AddChargeAsync(bill.Id, BillLineCategory.Medication,
                 dispenseItem.Medication?.Name ?? "Medication", request.DoseGiven, dispenseItem.UnitPrice,
                 ChargeSourceType.MedicationAdministration, administration.Id, $"med-admin:{administration.Id}",
-                encounter.Id, admission.Id, dispenseItem.Medication?.TariffCode, cancellationToken);
+                encounter.Id, encounter.AdmissionId, dispenseItem.Medication?.TariffCode, cancellationToken);
         }
 
         await db.SaveChangesAsync(cancellationToken);
         await audit.WriteAsync("medication.administered", nameof(MedicationAdministration), administration.Id.ToString(), encounter.PatientId, encounter.Id, cancellationToken: cancellationToken);
         return administration.Id;
     }
+
+    private async Task<decimal> PrivatePriceAsync(Guid stockItemId, CancellationToken cancellationToken) =>
+        await db.ItemPrices.AsNoTracking()
+            .Where(x => x.StockItemId == stockItemId && x.FundingSource == FundingSource.Private && x.IsActive)
+            .OrderByDescending(x => x.EffectiveFrom)
+            .Select(x => x.UnitPrice).FirstOrDefaultAsync(cancellationToken);
 }

@@ -13,7 +13,7 @@
 
   @if (showCreate()) {
     <form class="card mt-5" [formGroup]="form" (ngSubmit)="create()">
-      <div class="card-header"><h2 class="font-bold text-slate-900">Register a patient</h2></div>
+      <div class="card-header"><h2 class="font-bold text-slate-900">{{ editing() ? 'Edit patient' : 'Register a patient' }}</h2></div>
       <div class="card-body grid gap-4 md:grid-cols-3">
         <div><label class="label">First name</label><input class="input" formControlName="firstName" /></div>
         <div><label class="label">Middle name</label><input class="input" formControlName="middleName" /></div>
@@ -23,6 +23,10 @@
         <div><label class="label">Phone</label><input class="input" formControlName="phone" /></div>
         <div><label class="label">Email</label><input class="input" type="email" formControlName="email" /></div>
         <div class="md:col-span-2"><label class="label">Address</label><input class="input" formControlName="address" /></div>
+        <div><label class="label">State of origin</label><input class="input" formControlName="stateOfOrigin" /></div>
+        <div><label class="label">Home town</label><input class="input" formControlName="homeTown" /></div>
+        <div><label class="label">Allergy</label><input class="input" formControlName="allergy" /></div>
+        <div><label class="label">Occupation</label><input class="input" formControlName="occupation" /></div>
         <div><label class="label">Next of kin</label><input class="input" formControlName="nextOfKinName" /></div>
         <div><label class="label">Next of kin phone</label><input class="input" formControlName="nextOfKinPhone" /></div>
         <div><label class="label">HMO</label><select class="input" formControlName="hmoCompanyId"><option value="">Private / none</option>@for (hmo of hmos(); track hmo.id) {<option [value]="hmo.id">{{ hmo.name }}</option>}</select></div>
@@ -31,7 +35,7 @@
       </div>
       <div class="flex justify-end gap-3 border-t border-slate-100 px-5 py-4">
         <button type="button" class="btn-secondary" (click)="showCreate.set(false)">Cancel</button>
-        <button type="submit" class="btn-primary" [disabled]="form.invalid">Register patient</button>
+        <button type="submit" class="btn-primary" [disabled]="form.invalid">{{ editing() ? 'Save changes' : 'Register patient' }}</button>
       </div>
     </form>
   }
@@ -65,10 +69,15 @@
     <div class="card mt-5">
       <div class="card-header flex flex-wrap items-center justify-between gap-3">
         <div><h2 class="text-lg font-bold text-slate-900">{{ patient.fullName }}</h2><p class="text-sm text-slate-500">{{ patient.patientNumber }} · {{ patient.sex }} · born {{ patient.dateOfBirth | date:'mediumDate' }}</p></div>
-        <div class="flex gap-2"><span class="badge-green">{{ patient.status }}</span><button class="btn-secondary" type="button" (click)="renew()">Renew registration</button></div>
+        <div class="flex gap-2"><span class="badge-green">{{ patient.status }}</span><button class="btn-secondary" type="button" (click)="renew()">Renew registration</button><button class="btn-secondary" type="button" (click)="startEdit(patient)">Edit basic details</button></div>
       </div>
       <div class="card-body grid gap-6 md:grid-cols-2">
         <div><p class="stat-label">Contact</p><p class="mt-2 text-sm text-slate-700">{{ patient.phone || 'No phone' }}<br />{{ patient.email || 'No email' }}</p><p class="mt-2 text-sm text-slate-500">{{ patient.address || 'No address' }}</p></div>
+        <div>
+          <p class="stat-label">Demographics</p>
+          <p class="mt-2 text-sm text-slate-700">State of origin: {{ patient.stateOfOrigin || '—' }} · Home town: {{ patient.homeTown || '—' }}</p>
+          <p class="mt-2 text-sm text-slate-500">Allergy: {{ patient.allergy || '—' }} · Occupation: {{ patient.occupation || '—' }}</p>
+        </div>
         <div><p class="stat-label">Registration</p><p class="mt-2 text-sm text-slate-700">Expires {{ patient.currentRegistrationExpiresAt | date:'mediumDate' }}</p><p class="text-sm text-slate-500">Next of kin: {{ patient.nextOfKinName || '—' }} · {{ patient.nextOfKinPhone || '—' }}</p></div>
         <div class="md:col-span-2">
           <p class="stat-label">HMO enrollments</p>

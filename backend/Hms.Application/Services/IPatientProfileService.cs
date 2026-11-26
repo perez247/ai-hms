@@ -14,6 +14,7 @@ public interface IPatientProfileService
     Task<PatientVitalsPageDto> GetVitalsByNumberAsync(string patientNumber, int page, int pageSize, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<FitnessCertificateDto>> GetFitnessByNumberAsync(string patientNumber, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PatientEncounterSummaryDto>> GetEncountersByNumberAsync(string patientNumber, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<PatientMedicationDto>> GetMedicationsByNumberAsync(string patientNumber, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PatientInvestigationDto>> GetInvestigationsByNumberAsync(string patientNumber, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PatientSurgeryDto>> GetSurgeriesByNumberAsync(string patientNumber, CancellationToken cancellationToken = default);
     Task<PatientFinanceDto?> GetFinanceByNumberAsync(string patientNumber, CancellationToken cancellationToken = default);

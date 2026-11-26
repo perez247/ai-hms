@@ -20,29 +20,35 @@ public sealed class PatientNumberAndFitnessFlowTests(HmsApiFactory factory) : IC
     [Fact]
     public async Task Patient_number_resolves_profile_and_encounters()
     {
-        var nurse = await ClientAsync("nurse@clinic.local");
-        var basic = await nurse.GetFromJsonAsync<PatientBasicProfileDto>("/api/patients/number/PAT-DEMO-0001", Json);
+        var reception = await TestData.ClientAsync(factory, "receptionist@clinic.local");
+        var nurse = await TestData.ClientAsync(factory, "nurse@clinic.local");
+        var doctor = await TestData.ClientAsync(factory, "doctor@clinic.local");
+        var (patient, _, encounter, _) = await TestData.CreateOutpatientVisitAsync(reception, doctor);
+
+        var basic = await nurse.GetFromJsonAsync<PatientBasicProfileDto>(
+            $"/api/patients/number/{patient.PatientNumber}", Json);
         Assert.NotNull(basic);
-        Assert.Equal("PAT-DEMO-0001", basic.Patient.PatientNumber);
-        Assert.Equal("Ada Okafor", basic.Patient.FullName);
-        Assert.True(basic.IsPrivate == false);
+        Assert.Equal(patient.PatientNumber, basic.Patient.PatientNumber);
+        Assert.Equal(patient.FullName, basic.Patient.FullName);
+        Assert.True(basic.IsPrivate);
         Assert.Empty(basic.Patient.HmoEnrollments); // HMO assignments are lazy-loaded separately.
 
-        var encounters = await nurse.GetFromJsonAsync<List<PatientEncounterSummaryDto>>("/api/patients/number/PAT-DEMO-0001/encounters", Json);
+        var encounters = await nurse.GetFromJsonAsync<List<PatientEncounterSummaryDto>>(
+            $"/api/patients/number/{patient.PatientNumber}/encounters", Json);
         Assert.NotNull(encounters);
-        Assert.Contains(encounters, x => x.EncounterNumber == "ENC-DEMO-0001");
+        Assert.Contains(encounters, x => x.EncounterNumber == encounter.EncounterNumber);
     }
 
     [Fact]
     public async Task Fitness_stage_order_is_enforced_and_private_payment_settles()
     {
-        var reception = await ClientAsync("receptionist@clinic.local");
-        var nurse = await ClientAsync("nurse@clinic.local");
-        var doctor = await ClientAsync("doctor@clinic.local");
-        var finance = await ClientAsync("finance@clinic.local");
+        var reception = await TestData.ClientAsync(factory, "receptionist@clinic.local");
+        var nurse = await TestData.ClientAsync(factory, "nurse@clinic.local");
+        var doctor = await TestData.ClientAsync(factory, "doctor@clinic.local");
+        var finance = await TestData.ClientAsync(factory, "finance@clinic.local");
 
         var create = await reception.PostAsJsonAsync("/api/fitness", new CreateFitnessCertificateRequest(
-            "PAT-DEMO-0002", "Chinedu Bello", 42, Sex.Male, "+234-802-000-0001",
+            $"FIT-{Guid.NewGuid():N}", "Chinedu Bello", 42, Sex.Male, "+234-802-000-0001",
             FitnessPaymentType.Private, null, null, DateOnly.FromDateTime(DateTime.UtcNow), null), Json);
         create.EnsureSuccessStatusCode();
         var record = await create.Content.ReadFromJsonAsync<FitnessCertificateDto>(Json);
@@ -82,16 +88,5 @@ public sealed class PatientNumberAndFitnessFlowTests(HmsApiFactory factory) : IC
         payment.EnsureSuccessStatusCode();
         var paid = await payment.Content.ReadFromJsonAsync<FitnessCertificateDto>(Json);
         Assert.Equal(FitnessPaymentStatus.Paid, paid!.PaymentStatus);
-    }
-
-    private async Task<HttpClient> ClientAsync(string email)
-    {
-        var client = factory.CreateClient();
-        var login = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, "ChangeMe123!"));
-        login.EnsureSuccessStatusCode();
-        var auth = await login.Content.ReadFromJsonAsync<AuthResponse>(Json);
-        Assert.NotNull(auth);
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", auth.AccessToken);
-        return client;
     }
 }

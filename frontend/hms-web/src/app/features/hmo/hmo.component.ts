@@ -31,11 +31,11 @@ export class HmoComponent implements OnInit {
   load(): void {
     this.api.billing.search('HmoPending', undefined, 1, 100).subscribe({
       next: (page) => this.pending.set(page.items),
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load HMO-pending bills.'),
+      error: (err) => void err,
     });
     this.api.hmo.authorizations().subscribe({
       next: (page) => this.authorizations.set(page.items),
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load authorizations.'),
+      error: (err) => void err,
     });
   }
 
@@ -67,7 +67,7 @@ export class HmoComponent implements OnInit {
       approvedAmount: Number(this.approvedAmount) || null, notes: this.notes || null,
     }).subscribe({
       next: () => { this.busy.set(false); this.notice.set('PA code recorded and linked to the bill.'); this.reloadBill(); this.load(); },
-      error: (err) => { this.busy.set(false); this.toast.error(err?.error?.detail ?? 'Could not save PA.'); },
+      error: (err) => { this.busy.set(false); void err; },
     });
   }
 
@@ -79,7 +79,7 @@ export class HmoComponent implements OnInit {
     this.busy.set(true);
     this.api.hmo.updateCoverage(bill.id, { lines }).subscribe({
       next: (updated) => { this.busy.set(false); this.notice.set('Coverage allocations updated.'); this.select(updated); },
-      error: (err) => { this.busy.set(false); this.toast.error(err?.error?.detail ?? 'Could not update coverage.'); },
+      error: (err) => { this.busy.set(false); void err; },
     });
   }
 
@@ -89,7 +89,7 @@ export class HmoComponent implements OnInit {
     this.busy.set(true);
     this.api.hmo.approve(bill.id).subscribe({
       next: (updated) => { this.busy.set(false); this.notice.set('HMO approval recorded. Finance final approval is still required.'); this.select(updated); this.load(); },
-      error: (err) => { this.busy.set(false); this.toast.error(err?.error?.detail ?? 'HMO approval failed.'); },
+      error: (err) => { this.busy.set(false); void err; },
     });
   }
 

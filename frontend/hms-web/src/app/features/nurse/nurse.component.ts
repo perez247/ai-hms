@@ -69,7 +69,7 @@ export class NurseComponent implements OnInit {
     if (!term) { this.toast.error('Enter a patient number, name or phone.'); return; }
     this.api.patients.search(term, 1, 20).subscribe({
       next: (page) => this.results.set(page.items),
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Patient search failed.'),
+      error: (err) => void err,
     });
   }
 
@@ -86,21 +86,21 @@ export class NurseComponent implements OnInit {
         this.tab.set(context?.services ? 'services' : 'walkin');
         if (context?.services) this.loadEncounters(); else this.loadVitals();
       },
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load the patient.'),
+      error: (err) => void err,
     });
   }
 
   loadAppointments(): void {
     this.api.nurse.appointments().subscribe({
       next: (rows) => this.appointments.set(rows),
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load scheduled appointments.'),
+      error: (err) => void err,
     });
   }
 
   loadInpatients(): void {
     this.api.nurse.inpatients().subscribe({
       next: (rows) => this.inpatients.set(rows),
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load inpatients.'),
+      error: (err) => void err,
     });
   }
 
@@ -109,7 +109,7 @@ export class NurseComponent implements OnInit {
     if (!patient) return;
     this.api.nurse.vitals(patient.patientNumber, 1, 5).subscribe({
       next: (page) => this.vitals.set(page),
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load vitals.'),
+      error: (err) => void err,
     });
   }
 
@@ -123,7 +123,7 @@ export class NurseComponent implements OnInit {
       notes: this.vitalsNotes || null,
     }).subscribe({
       next: () => { this.toast.success('Vitals recorded.'); this.loadVitals(); },
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not record vitals.'),
+      error: (err) => void err,
     });
   }
 
@@ -132,7 +132,7 @@ export class NurseComponent implements OnInit {
     if (!patient) return;
     this.api.nurse.encounters(patient.patientNumber).subscribe({
       next: (rows) => this.encounters.set(rows),
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load doctor services.'),
+      error: (err) => void err,
     });
   }
 
@@ -154,7 +154,7 @@ export class NurseComponent implements OnInit {
       batchNumber: null, notes: this.activeInpatient()?.admissionNumber ?? 'Nurse triage',
     }).subscribe({
       next: () => { this.toast.success('Administration logged and billed.'); this.loadEncounters(); },
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not log administration.'),
+      error: (err) => void err,
     });
   }
 

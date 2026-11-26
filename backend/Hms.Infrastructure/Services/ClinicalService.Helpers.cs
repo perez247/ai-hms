@@ -13,15 +13,6 @@ namespace Hms.Infrastructure.Services;
 public sealed partial class ClinicalService
 {
 
-    private async Task AddConsultationChargeAsync(Guid billId, Encounter encounter, CancellationToken cancellationToken)
-    {
-        var amount = await GetFeeAmountAsync(FeeCode.InpatientConsultation, cancellationToken);
-        await billing.AddChargeAsync(billId, BillLineCategory.Consultation,
-            $"Inpatient consultation {encounter.EncounterNumber}", 1m, amount,
-            ChargeSourceType.Encounter, encounter.Id, $"consultation:{encounter.Id}",
-            encounter.Id, encounter.AdmissionId, "INPATIENT_CONSULTATION", cancellationToken);
-    }
-
     private async Task<decimal> GetFeeAmountAsync(FeeCode code, CancellationToken cancellationToken)
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);

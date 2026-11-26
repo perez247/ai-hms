@@ -9,17 +9,25 @@ public static class Permissions
     public const string PatientsProfileRead = "patients.profile.read";
     public const string PatientFilesUpload = "patients.files.upload";
     public const string PatientsCreate = "patients.create";
+    public const string PatientsUpdate = "patients.update";
     public const string PatientsRenew = "patients.renew";
     public const string PatientHmoManage = "patients.hmo.manage";
 
     public const string AppointmentsRead = "appointments.read";
     public const string AppointmentsCreate = "appointments.create";
+    public const string FundingVerify = "funding.verify";
+
+    public const string StockRead = "stock.read";
+    public const string StockManage = "stock.manage";
+    public const string LabRequestsRead = "lab.requests.read";
+    public const string ProceduresRequestsRead = "procedures.requests.read";
 
     public const string VitalsRead = "vitals.read";
     public const string VitalsWrite = "vitals.write";
 
     public const string EncountersRead = "encounters.read";
     public const string EncountersWrite = "encounters.write";
+    public const string EncountersSign = "encounters.sign";
     public const string PrescriptionsWrite = "prescriptions.write";
     public const string InvestigationsWrite = "investigations.write";
     public const string SurgeriesWrite = "surgeries.write";

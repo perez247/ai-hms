@@ -1,90 +1,58 @@
 <div class="mx-auto px-4">
   <p class="text-xs font-bold uppercase tracking-[0.2em] text-teal-700">Doctor</p>
-  <h1 class="mt-2 text-3xl font-black tracking-tight text-slate-950">Encounters &amp; admissions</h1>
-  <p class="mt-1 text-sm text-slate-500">Open an encounter, review orders and hand the prescription to Pharmacy. Prescriptions are committed only after Pharmacy dispenses.</p>
+  <h1 class="mt-2 text-3xl font-black tracking-tight text-slate-950">Encounters &amp; clerking</h1>
+  <p class="mt-1 text-sm text-slate-500">One worklist for outpatient and inpatient journeys. Open a row to clerk the encounter and hand orders to Pharmacy.</p>
   @if (notice()) { <div class="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{{ notice() }}</div> }
 
-  @if (queue(); as q) {
-    <div class="mt-5 grid gap-5 lg:grid-cols-2">
-      <div class="card overflow-hidden">
-        <div class="card-header flex items-center justify-between"><div><h2 class="font-bold text-slate-900">Awaiting encounter</h2><p class="text-xs text-slate-500">Checked-in outpatients with no encounter yet</p></div><button class="btn-secondary" type="button" (click)="loadQueue()">Refresh</button></div>
-        <div class="divide-y divide-slate-100">
-          @for (item of q.awaitingOutpatients; track item.sourceId) {
-            <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-              <div><p class="font-semibold text-slate-900">{{ item.patientName }}</p><p class="text-xs text-slate-500">{{ item.patientNumber }} · {{ item.referenceNumber }} · since {{ item.since | date:'short' }}</p><p class="text-xs text-slate-400">{{ item.hmoName || 'Private' }}</p></div>
-              <button class="btn-primary" type="button" (click)="startOutpatient(item)">Create encounter</button>
-            </div>
-          }
-          @if (q.awaitingOutpatients.length === 0) { <p class="px-4 py-8 text-center text-sm text-slate-500">No checked-in patients waiting.</p> }
-        </div>
-      </div>
-      <div class="card overflow-hidden">
-        <div class="card-header flex items-center justify-between"><div><h2 class="font-bold text-slate-900">Active inpatients</h2><p class="text-xs text-slate-500">Admitted patients not discharged</p></div><button class="btn-secondary" type="button" (click)="loadQueue()">Refresh</button></div>
-        <div class="divide-y divide-slate-100">
-          @for (item of q.activeInpatients; track item.sourceId) {
-            <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-              <div><p class="font-semibold text-slate-900">{{ item.patientName }}</p><p class="text-xs text-slate-500">{{ item.patientNumber }} · {{ item.referenceNumber }} · admitted {{ item.since | date:'short' }}</p><p class="text-xs text-slate-400">{{ item.hmoName || 'Private' }}</p></div>
-              @if (item.hasOpenEncounter) { <span class="badge-blue">Open encounter</span> }
-              @else { <button class="btn-secondary" type="button" (click)="startInpatient(item)">Create encounter</button> }
-            </div>
-          }
-          @if (q.activeInpatients.length === 0) { <p class="px-4 py-8 text-center text-sm text-slate-500">No active admissions.</p> }
-        </div>
+  <!-- Single combined encounters list -->
+  <div class="card mt-5 overflow-hidden">
+    <div class="card-header flex flex-wrap items-end justify-between gap-3">
+      <div><h2 class="font-bold text-slate-900">Encounter worklist</h2><p class="text-xs text-slate-500">Appointments and admissions in one list · {{ filteredRows().length }} of {{ rows().length }}</p></div>
+      <div class="flex flex-wrap items-end gap-2">
+        <div><label class="label">Type</label><select class="input" [value]="filterType()" (change)="filterType.set($any($event.target).value)"><option value="">All types</option><option>Outpatient</option><option>Inpatient</option></select></div>
+        <div><label class="label">Status</label><select class="input" [value]="filterStatus()" (change)="filterStatus.set($any($event.target).value)">
+          <option value="active">Pending &amp; open (default)</option>
+          <option value="closed">Completed &amp; cancelled</option>
+          <option value="">All statuses</option>
+          <option>Pending</option>
+          <option>Open</option>
+          <option>Completed</option>
+          <option>Cancelled</option>
+        </select></div>
+        <div><label class="label">Date</label><input class="input" type="date" [value]="filterDate()" (change)="filterDate.set($any($event.target).value)" /></div>
+        <div><label class="label">Search</label><input class="input" [value]="search()" (input)="search.set($any($event.target).value)" placeholder="Patient, ID, encounter no." /></div>
+        <button class="btn-secondary" type="button" (click)="reload()">Refresh</button>
+        <button class="btn-ghost" type="button" (click)="clearFilters()">Clear</button>
       </div>
     </div>
-  }
-
-  <div class="card mt-5 flex flex-wrap items-end gap-3 p-4">
-    <div class="min-w-80 flex-1"><label class="label">Encounter ID</label><input class="input font-mono text-xs" [(ngModel)]="encounterId" name="encounterId" /></div>
-    <button class="btn-primary" type="button" (click)="load()">Open encounter</button>
+    <div class="overflow-x-auto">
+      <table class="table">
+        <thead><tr>
+          <th><button type="button" class="font-semibold uppercase" (click)="sortBy('patientName')">Patient {{ sortColumn() === 'patientName' ? (sortAscending() ? '↑' : '↓') : '' }}</button></th>
+          <th><button type="button" class="font-semibold uppercase" (click)="sortBy('type')">Type {{ sortColumn() === 'type' ? (sortAscending() ? '↑' : '↓') : '' }}</button></th>
+          <th>Reference</th>
+          <th><button type="button" class="font-semibold uppercase" (click)="sortBy('status')">Status {{ sortColumn() === 'status' ? (sortAscending() ? '↑' : '↓') : '' }}</button></th>
+          <th><button type="button" class="font-semibold uppercase" (click)="sortBy('startedAt')">Date {{ sortColumn() === 'startedAt' ? (sortAscending() ? '↑' : '↓') : '' }}</button></th>
+          <th></th>
+        </tr></thead>
+        <tbody>
+          @for (row of filteredRows(); track row.sourceId + row.id) {
+            <tr class="cursor-pointer" (click)="openRow(row)">
+              <td><p class="font-semibold text-slate-900">{{ row.patientName }}</p><p class="text-xs text-slate-500">{{ row.patientNumber }}</p></td>
+              <td><span [class]="row.type === 'Inpatient' ? 'badge-amber' : 'badge-blue'">{{ row.type }}</span></td>
+              <td><p class="font-mono text-xs">{{ row.encounterNumber }}</p><p class="text-xs text-slate-400">{{ row.referenceNumber }}</p></td>
+              <td><span [class]="row.status === 'Pending' ? 'badge-amber' : row.status === 'Completed' ? 'badge-green' : 'badge-slate'">{{ row.status }}</span></td>
+              <td>{{ row.startedAt | date:'short' }}</td>
+              <td class="text-right">
+                @if (row.pending) { <button class="btn-primary" type="button" (click)="$event.stopPropagation(); openRow(row)">Create encounter</button> }
+                @else { <button class="btn-secondary" type="button" (click)="$event.stopPropagation(); openRow(row)">Open</button> }
+              </td>
+            </tr>
+          }
+          @if (filteredRows().length === 0) { <tr><td colspan="6" class="py-10 text-center text-slate-500">No encounters match these filters.</td></tr> }
+        </tbody>
+      </table>
+    </div>
   </div>
 
-  @if (encounter(); as enc) {
-    <div class="mt-5 grid gap-5 xl:grid-cols-[1fr_420px]">
-      <div class="space-y-5">
-        <div class="card">
-          <div class="card-header flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-bold">{{ enc.patientName }}</h2><p class="text-sm text-slate-500">{{ enc.encounterNumber }} · {{ enc.type }} · {{ enc.status }} · started {{ enc.startedAt | date:'medium' }}</p></div><div class="flex gap-2"><span [class]="enc.isEmergency ? 'badge-red' : 'badge-blue'">{{ enc.isEmergency ? 'Emergency' : 'Routine' }}</span><a class="btn-secondary" [routerLink]="['/pharmacy/prescriptions']" [queryParams]="{ encounterId: enc.id }">Send to pharmacy</a></div></div>
-          <div class="card-body grid gap-4 md:grid-cols-2">
-            <div><p class="stat-label">Prescriptions</p>@for (rx of enc.prescriptions; track rx.id) {<p class="mt-2 text-sm"><span class="badge-blue">{{ rx.status }}</span> {{ rx.itemCount }} item(s)</p>}@if (enc.prescriptions.length === 0) {<p class="mt-2 text-sm text-slate-500">No prescriptions.</p>}</div>
-            <div><p class="stat-label">Investigations</p>@for (investigation of enc.investigations; track investigation.id) {<p class="mt-2 text-sm">{{ investigation.name }} · <span class="text-slate-500">{{ investigation.status }}</span></p>}@if (enc.investigations.length === 0) {<p class="mt-2 text-sm text-slate-500">None ordered.</p>}</div>
-            <div><p class="stat-label">Surgeries</p>@for (surgery of enc.surgeries; track surgery.id) {<p class="mt-2 text-sm">{{ surgery.name }} · <span class="text-slate-500">{{ surgery.status }}</span></p>}@if (enc.surgeries.length === 0) {<p class="mt-2 text-sm text-slate-500">None scheduled.</p>}</div>
-            <div><p class="stat-label">Latest vitals</p>@if (enc.vitals[0]; as vital) {
-              <p class="mt-2 text-sm" [class]="isVitalAbnormal(vital) ? 'text-red-600' : ''">
-                Temp <span [class]="vitalClass(vital.temperatureC, 'temperatureC')">{{ vital.temperatureC ?? '—' }}°C</span> ·
-                BP <span [class]="bpClass(vital)">{{ vital.systolic ?? '—' }}/{{ vital.diastolic ?? '—' }}</span> ·
-                Pulse <span [class]="vitalClass(vital.pulse, 'pulse')">{{ vital.pulse ?? '—' }}</span> ·
-                SpO₂ <span [class]="vitalClass(vital.spo2, 'spo2')">{{ vital.spo2 ?? '—' }}%</span> ·
-                Pain <span [class]="vitalClass(vital.painScore, 'painScore')">{{ vital.painScore ?? '—' }}</span>
-              </p>
-              @if (isVitalAbnormal(vital)) { <p class="mt-1 text-xs font-bold text-red-600">Abnormal reading — outside normal range.</p> }
-            } @else {<p class="mt-2 text-sm text-slate-500">No vitals.</p>}</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="space-y-4">
-        <div class="card">
-          <div class="card-header"><h2 class="font-bold">Create outpatient encounter</h2></div>
-          <form class="card-body space-y-3" (ngSubmit)="createOutpatient()">
-            <div><label class="label">Patient number</label><input class="input" [(ngModel)]="patientNumber" name="patientNumber" placeholder="e.g. PAT-2026-001234" /></div>
-            <div><label class="label">Appointment ID (optional)</label><input class="input" [(ngModel)]="appointmentId" name="appointmentId" /></div>
-            <div><label class="label">HMO enrollment ID (optional)</label><input class="input" [(ngModel)]="hmoEnrollmentId" name="hmoEnrollmentId" /></div>
-            <div><label class="label">Chief complaint</label><input class="input" [(ngModel)]="chiefComplaint" name="chiefComplaint" /></div>
-            <label class="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" [(ngModel)]="isEmergency" name="isEmergency" /> Emergency visit</label>
-            <button class="btn-primary w-full" type="submit">Create encounter</button>
-          </form>
-        </div>
-        <div class="card">
-          <div class="card-header"><h2 class="font-bold">Admit inpatient</h2></div>
-          <form class="card-body space-y-3" (ngSubmit)="createAdmission()">
-            <div><label class="label">Patient number</label><input class="input" [(ngModel)]="admissionPatientNumber" name="admissionPatientNumber" placeholder="e.g. PAT-2026-001234" /></div>
-            <div><label class="label">Ward</label><select class="input" [(ngModel)]="wardType" name="wardType"><option>General</option><option>Private</option></select></div>
-            <div><label class="label">Bed number</label><input class="input" [(ngModel)]="bedNumber" name="bedNumber" /></div>
-            <button class="btn-secondary w-full" type="submit">Create admission</button>
-          </form>
-        </div>
-      </div>
-    </div>
-  }
 </div>
-

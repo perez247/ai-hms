@@ -63,7 +63,7 @@ Default fees:
 | Private bed-day | 30,000 |
 | Fitness certificate | 8,000 |
 
-## 5.4 Demo HMO and tariff
+## 5.4 Seeded HMO and tariff
 
 `HealthGuard HMO` (`HEALTH-DEMO`) with a five-year contract and active tariff v1:
 
@@ -75,40 +75,34 @@ Default fees:
 - Ultrasound: 15,000, 90% covered.
 - Appendectomy: 250,000, 90% covered.
 
-## 5.5 Demo journeys
+## 5.5 Clinical data is entered through the application
 
-### Outpatient — Ada Okafor
+The seed deliberately creates **no** patients, appointments, encounters, admissions, bills or clinical
+records. Only users, settings, fees, the HMO/contract/tariff and the stock catalogue are seeded. This
+keeps a fresh environment clean and makes the integration tests create exactly the records they assert on.
 
-- Patient `PAT-DEMO-0001`, HealthGuard enrollment `HG-000123`.
-- Appointment `APT-DEMO-0001`, checked in.
-- Outpatient encounter `ENC-DEMO-0001`.
-- Prescription: paracetamol 9 tablets + amoxicillin 10 capsules.
-- Bill `BILL-DEMO-0002` in Draft until Pharmacy dispenses and commits.
-- Vitals already recorded.
+## 5.6 Manually exercising the workflows
 
-### Inpatient — Chinedu Bello
+Create your own data first:
 
-- Patient `PAT-DEMO-0002`, self-pay.
-- Admission `ADM-DEMO-0001`, general ward, active.
-- Inpatient encounter `ENC-DEMO-0002`.
-- Bill `BILL-DEMO-0003` in Draft with inpatient consultation line.
-- Bed-days are generated when the Doctor requests discharge.
-- Discharge completion requires Finance approval.
-
-## 5.6 Manually exercising the demo
+1. Login as Receptionist and register a patient (optionally add an HMO enrollment).
+2. Book an appointment and check it in. Check-in creates the single visit bill (appointment fee).
+3. Login as Doctor and open the row from the encounter worklist; the encounter gets its own page.
+4. Order tests/procedures and/or a prescription, save the draft, then sign the encounter.
 
 Outpatient HMO journey:
 
-1. Login as Pharmacy and open `/pharmacy/prescriptions`.
-2. Select Ada Okafor and dispense both items.
-3. Login as Finance and route `BILL-DEMO-0002` to the HMO Office.
-4. Login as HMO Office, record PA `PA-DEMO-001`, approve the HMO portion.
+1. Login as Pharmacy and open `/pharmacy/prescriptions` for the encounter.
+2. Dispense the prescribed items. The visit bill commits.
+3. Login as Finance and route the visit bill to the HMO Office.
+4. Login as HMO Office, record a PA for the encounter, approve the HMO portion.
 5. Login as Finance, record the patient co-pay, approve the bill.
-6. The bill is `Approved`, with an `Open` receivable for the HMO amount.
+6. The bill is `Approved`, with an `Open` receivable for the HMO amount. The patient's appointment is
+   now closed, so a new appointment can be booked.
 
 Inpatient discharge journey:
 
-1. Login as Doctor, open the admission (use `ADM-DEMO-0001` from the database or your own created admission).
+1. Login as Doctor, create an admission and open its inpatient encounter.
 2. Request discharge with a summary; this generates bed-days and commits the final bill.
 3. Login as Finance, pay the full patient amount, then approve.
 4. Login as Doctor and complete discharge.

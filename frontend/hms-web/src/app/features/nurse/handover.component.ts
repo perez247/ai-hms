@@ -10,7 +10,7 @@ import { RichTextEditorComponent } from '../shared/rich-text-editor.component';
   selector: 'app-handover',
   imports: [DatePipe, RichTextEditorComponent],
   template: `
-    <div class="mx-auto max-w-6xl">
+    <div class="mx-auto px-4">
       <p class="text-xs font-bold uppercase tracking-[0.2em] text-teal-700">Services</p>
       <h1 class="mt-2 text-3xl font-black tracking-tight text-slate-950">Shift handover</h1>
       <p class="mt-1 text-sm text-slate-500">Nurse-only chronological log. Rich text is stored with formatting intact.</p>
@@ -50,7 +50,7 @@ export class HandoverComponent implements OnInit {
   load(): void {
     this.api.nurse.handovers(1, 100).subscribe({
       next: (rows) => this.entries.set(rows),
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load handovers.'),
+      error: (err) => void err,
     });
   }
 
@@ -59,7 +59,7 @@ export class HandoverComponent implements OnInit {
     this.busy.set(true);
     this.api.nurse.createHandover({ shiftDate: new Date().toISOString().slice(0, 10), contentHtml: this.content() }).subscribe({
       next: () => { this.busy.set(false); this.toast.success('Shift handover posted.'); this.content.set(''); this.load(); },
-      error: (err) => { this.busy.set(false); this.toast.error(err?.error?.detail ?? 'Could not post the handover.'); },
+      error: (err) => { this.busy.set(false); void err; },
     });
   }
 }

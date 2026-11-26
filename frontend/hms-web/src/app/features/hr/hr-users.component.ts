@@ -21,7 +21,7 @@ export class HrUsersComponent implements OnInit {
   readonly users = signal<UserRecord[]>([]);
   readonly notice = signal<string | null>(null);
   readonly showCreate = signal(false);
-  readonly roles: StaffRole[] = ['Receptionist', 'Nurse', 'Doctor', 'Pharmacy', 'Finance', 'HmoOffice', 'HrOffice', 'Admin'];
+  readonly roles: StaffRole[] = ['Receptionist', 'Nurse', 'Doctor', 'Pharmacy', 'Finance', 'HmoOffice', 'HrOffice', 'Lab', 'Admin'];
   readonly form = this.fb.nonNullable.group({
     fullName: ['', Validators.required], email: ['', [Validators.required, Validators.email]],
     password: ['ChangeMe123!', [Validators.required, Validators.minLength(10)]],
@@ -35,7 +35,7 @@ export class HrUsersComponent implements OnInit {
   load(): void {
     this.api.hr.users(this.activeFilter ?? undefined).subscribe({
       next: (page) => this.users.set(page.items),
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load users.'),
+      error: (err) => void err,
     });
   }
 
@@ -44,7 +44,7 @@ export class HrUsersComponent implements OnInit {
     const value = this.form.getRawValue();
     this.api.hr.create({ ...value, salaryAmount: Number(value.salaryAmount) || null, employeeNumber: value.employeeNumber || null }).subscribe({
       next: () => { this.notice.set('User account created.'); this.showCreate.set(false); this.form.reset({ staffRole: 'Receptionist', password: 'ChangeMe123!' }); this.load(); },
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not create user.'),
+      error: (err) => void err,
     });
   }
 
@@ -60,7 +60,7 @@ export class HrUsersComponent implements OnInit {
     if (!reason) return;
     this.api.hr.disable(user.id, reason).subscribe({
       next: () => { this.notice.set(`${user.fullName} disabled.`); this.load(); },
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not disable user.'),
+      error: (err) => void err,
     });
   }
 

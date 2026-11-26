@@ -62,27 +62,13 @@
         <div class="overflow-x-auto"><table class="table">
           <thead><tr><th>Patient</th><th>Payment</th><th>Stage</th><th>Payment status</th><th></th></tr></thead>
           <tbody>
-            @for (item of items(); track item.id) {
-              <tr>
+            @for (item of sortedItems(); track item.id) {
+              <tr class="cursor-pointer" (click)="openDetail(item)">
                 <td><p class="font-semibold">{{ item.patientName }}</p><p class="text-xs text-slate-500">{{ item.patientNumber || 'No patient number' }} · {{ item.patientAge }}y · {{ item.personSex }}</p></td>
                 <td><span class="badge-slate">{{ item.paymentType === 'Hmo' ? 'HMO' : 'Private' }}</span></td>
                 <td><span [class]="statusClass(item.status)">{{ item.status }}</span></td>
                 <td><span [class]="statusClass(item.paymentStatus)">{{ item.paymentStatus }}</span></td>
-                <td class="text-right">
-                  <button class="btn-secondary mr-2" type="button" (click)="openDetail(item)">Details</button>
-                  @if (item.status === 'AwaitingNurse' && auth.hasPermission('fitness.certificate.upload')) {
-                    <button class="btn-secondary" type="button" (click)="startNurseReview(item)">Nurse review</button>
-                  }
-                  @if (item.status === 'AwaitingDoctor' && auth.hasPermission('fitness.approve')) {
-                    <span class="text-xs font-bold text-teal-700">Review in details</span>
-                  }
-                  @if (item.status === 'Approved' && item.paymentType === 'Private' && auth.hasPermission('fitness.payment')) {
-                    @if (item.paymentStatus === 'Paid') {<button class="btn-secondary" type="button" (click)="setPayment(item, false)">Mark unpaid</button>} @else {<button class="btn-primary" type="button" (click)="setPayment(item, true)">Mark paid</button>}
-                  }
-                  @if (item.status === 'Approved' && item.paymentType === 'Hmo' && auth.hasPermission('fitness.payment')) {
-                    <a class="text-xs font-bold text-teal-700" [routerLink]="['/hmos', item.hmoCompanyId]">Bulk pay in HMO profile</a>
-                  }
-                </td>
+                <td class="text-right"><button class="btn-secondary" type="button" (click)="$event.stopPropagation(); openDetail(item)">Details</button></td>
               </tr>
             }
             @if (items().length === 0) {<tr><td colspan="5" class="py-10 text-center text-slate-500">No fitness records.</td></tr>}
@@ -123,16 +109,31 @@
       </div>
       @if (record.rejectionReason) { <p class="mt-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">Rejection reason: {{ record.rejectionReason }}</p> }
       <p class="mt-4 text-xs text-slate-500">Bill: {{ record.billId || 'Not created' }} · Certificate file: {{ record.certificateFileName || 'None' }}</p>
-      @if (record.status === 'AwaitingDoctor' && auth.hasPermission('fitness.approve')) {
-        <div class="mt-6 border-t border-slate-100 pt-5">
-          <label class="label">Rejection reason (required when rejecting)</label>
-          <textarea class="input mt-1" rows="2" [value]="rejectionReason()" (input)="rejectionReason.set($any($event.target).value)" placeholder="Reason for rejection"></textarea>
-          <div class="mt-4 flex justify-end gap-3">
-            <button type="button" class="btn-danger" [disabled]="busy()" (click)="decide(record, false)">Reject</button>
-            <button type="button" class="btn-primary" [disabled]="busy()" (click)="decide(record, true)">{{ busy() ? 'Saving…' : 'Accept' }}</button>
+      <div class="mt-6 border-t border-slate-100 pt-5">
+        <p class="stat-label mb-3">Actions</p>
+        @if (record.status === 'AwaitingNurse' && auth.hasPermission('fitness.certificate.upload')) {
+          <div class="flex justify-end"><button type="button" class="btn-primary" (click)="startNurseReviewFromDetail(record)">Nurse review</button></div>
+        }
+        @if (record.status === 'AwaitingDoctor' && auth.hasPermission('fitness.approve')) {
+          <div>
+            <label class="label">Rejection reason (required when rejecting)</label>
+            <textarea class="input mt-1" rows="2" [value]="rejectionReason()" (input)="rejectionReason.set($any($event.target).value)" placeholder="Reason for rejection"></textarea>
+            <div class="mt-4 flex justify-end gap-3">
+              <button type="button" class="btn-danger" [disabled]="busy()" (click)="decide(record, false)">Reject</button>
+              <button type="button" class="btn-primary" [disabled]="busy()" (click)="decide(record, true)">{{ busy() ? 'Saving…' : 'Accept' }}</button>
+            </div>
           </div>
-        </div>
-      }
+        }
+        @if (record.status === 'Approved' && itemIsPrivate(record) && auth.hasPermission('fitness.payment')) {
+          <div class="flex justify-end">
+            @if (record.paymentStatus === 'Paid') {<button class="btn-secondary" type="button" (click)="setPayment(record, false)">Mark unpaid</button>}
+            @else {<button class="btn-primary" type="button" (click)="setPayment(record, true)">Mark paid</button>}
+          </div>
+        }
+        @if (record.status === 'Approved' && !itemIsPrivate(record) && auth.hasPermission('fitness.payment')) {
+          <div class="flex justify-end"><a class="btn-secondary" [routerLink]="['/hmos', record.hmoCompanyId]" (click)="closeDetail()">Bulk pay in HMO profile</a></div>
+        }
+      </div>
     </div>
   }
 </ng-template>

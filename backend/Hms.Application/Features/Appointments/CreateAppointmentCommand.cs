@@ -23,6 +23,8 @@ public sealed class CreateAppointmentCommandValidator : AbstractValidator<Create
         RuleFor(x => x.Request.DoctorId).NotEmpty();
         RuleFor(x => x.Request.ScheduledAt).GreaterThan(DateTimeOffset.UtcNow);
         RuleFor(x => x.Request.DurationMinutes).GreaterThan(0);
-        RuleFor(x => x.Request.Reason).MaximumLength(500);
+        RuleFor(x => x.Request.Reason)
+            .Must(Hms.Domain.Enums.AppointmentReasons.IsValid)
+            .WithMessage("Reason must be Consultation or Emergency.");
     }
 }

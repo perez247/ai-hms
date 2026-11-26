@@ -48,7 +48,7 @@ export class LoginComponent {
           void this.router.navigateByUrl(returnUrl ?? this.auth.homeForRole(response.user.role));
         },
         error: (err) => {
-          this.toast.error(err?.error?.detail ?? 'Unable to sign in. Check the clinic API and your credentials.');
+          void err;
         },
       });
   }

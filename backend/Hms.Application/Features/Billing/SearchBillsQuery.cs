@@ -7,12 +7,12 @@ using MediatR;
 
 namespace Hms.Application.Features.Billing;
 
-public sealed record SearchBillsQuery(BillStatus? Status, Guid? PatientId, int Page, int PageSize) : IRequest<PagedResult<BillDto>>;
+public sealed record SearchBillsQuery(BillStatus? Status, Guid? PatientId, int Page, int PageSize, bool? InDebt = null) : IRequest<PagedResult<BillDto>>;
 
 public sealed class SearchBillsQueryHandler(IBillingService billing) : IRequestHandler<SearchBillsQuery, PagedResult<BillDto>>
 {
     public Task<PagedResult<BillDto>> Handle(SearchBillsQuery request, CancellationToken cancellationToken) =>
-        billing.SearchAsync(request.Status, request.PatientId, request.Page, request.PageSize, cancellationToken);
+        billing.SearchAsync(request.Status, request.PatientId, request.Page, request.PageSize, cancellationToken, request.InDebt);
 }
 
 public sealed class SearchBillsQueryValidator : AbstractValidator<SearchBillsQuery>

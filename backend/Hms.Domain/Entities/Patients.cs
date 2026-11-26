@@ -14,6 +14,10 @@ public class Patient : Entity
     public string? Phone { get; set; }
     public string? Email { get; set; }
     public string? Address { get; set; }
+    public string? StateOfOrigin { get; set; }
+    public string? HomeTown { get; set; }
+    public string? Allergy { get; set; }
+    public string? Occupation { get; set; }
     public string? NextOfKinName { get; set; }
     public string? NextOfKinPhone { get; set; }
     public DateOnly RegistrationDate { get; set; }
@@ -22,7 +26,7 @@ public class Patient : Entity
     public Guid? CreatedBy { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }
-
+    public ICollection<Vital> Vitals { get; set; } = new List<Vital>();
     public ICollection<PatientRegistrationPeriod> RegistrationPeriods { get; set; } = new List<PatientRegistrationPeriod>();
     public ICollection<PatientHmoEnrollment> HmoEnrollments { get; set; } = new List<PatientHmoEnrollment>();
 

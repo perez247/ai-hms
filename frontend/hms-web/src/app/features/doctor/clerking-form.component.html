@@ -1,0 +1,237 @@
+<form [formGroup]="form" class="card overflow-hidden" (ngSubmit)="sign()">
+  <div class="card-header flex flex-wrap items-start justify-between gap-4">
+    <div>
+      <p class="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Clerking · {{ context().encounterNumber }}</p>
+      <h2 class="mt-1 text-xl font-black text-slate-950">{{ context().patient.fullName }}</h2>
+      <p class="text-xs text-slate-500">{{ context().patient.patientNumber }} · {{ context().encounterType }}
+        <span class="ml-2 text-rose-600">* Required</span>
+      </p>
+    </div>
+    <div class="text-right">
+      <p class="stat-label">Sections complete</p>
+      <p class="mt-1 text-2xl font-black text-teal-700">{{ completedCount() }}<span class="text-base text-slate-400">/4</span></p>
+    </div>
+  </div>
+
+  @if (showErrors() && validationMessage()) {
+    <div class="mx-5 mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+      {{ validationMessage() }}
+    </div>
+  }
+
+  <!-- Section navigation with per-section validation status -->
+  <div class="flex flex-wrap gap-2 border-b border-slate-100 bg-slate-50/60 px-5 py-3">
+    @for (section of sections; track section.key) {
+      <button type="button" class="flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold transition"
+        [class]="activeSection() === section.key ? 'border-teal-600 bg-teal-50 text-teal-900' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'"
+        (click)="selectSection(section.key)">
+        {{ section.label }}
+        @if (sectionStatus()[section.key] === 'Complete') {<span class="badge-green">✓</span>}
+        @else if (sectionStatus()[section.key] === 'Incomplete') {<span class="badge-red">!</span>}
+        @else {<span class="badge-slate">○</span>}
+      </button>
+    }
+  </div>
+
+  <!-- Section A: Subjective -->
+  @if (activeSection() === 'A') {
+    <div formGroupName="subjective" class="card-body space-y-5">
+      <div>
+        <label class="label">Presenting Complaint (CC) <span class="text-rose-600">*</span></label>
+        <textarea class="input" rows="3" formControlName="presentingComplaint" placeholder="e.g. Fever and headache for 3 days"></textarea>
+      </div>
+      <div>
+        <label class="label">History of Present Illness (HPI) (optional)</label>
+        <textarea class="input" rows="4" formControlName="hpi" placeholder="Onset, course, associated symptoms, aggravating/relieving factors…"></textarea>
+      </div>
+      <div>
+        <label class="label">ROS notes (optional)</label><textarea class="input" rows="2" formControlName="rosNotes"></textarea>
+      </div>
+      <div>
+        <label class="label">Past Medical &amp; Surgical History (pre-filled, append as needed)</label>
+        <textarea class="input" rows="3" formControlName="pastMedicalSurgicalHistory" placeholder="Known conditions, prior surgeries, hospitalisations…"></textarea>
+      </div>
+      <div>
+        <label class="label">Family History (optional)</label>
+        <textarea class="input" rows="2" formControlName="familyHistory" placeholder="Known conditions, premature deaths in family…"></textarea>
+      </div>
+      <div>
+        <label class="label">Allergies Update (new drug or food allergies)</label>
+        <div class="flex gap-2">
+          <input class="input" [value]="allergyInput()" (input)="allergyInput.set($any($event.target).value)"
+            (keyup.enter)="addAllergy()" placeholder="Type an allergy and press Enter" />
+          <button class="btn-secondary" type="button" (click)="addAllergy()">Add</button>
+        </div>
+        <div class="mt-2 flex flex-wrap gap-2">
+          @for (allergy of allergies.value; track $index) {
+            <span class="badge-amber">{{ allergy }}
+              <button type="button" class="ml-1 font-bold" (click)="removeAllergy($index)">×</button>
+            </span>
+          }
+          @if (allergies.length === 0) {<span class="text-xs text-slate-400">No new allergies recorded.</span>}
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Section B: Objective -->
+  @if (activeSection() === 'B') {
+    <div formGroupName="objective" class="card-body space-y-5">
+      <div>
+        <label class="label">General Observation <span class="text-rose-600">*</span></label>
+        <textarea class="input" rows="3" formControlName="generalObservation" placeholder="Overall appearance, alertness, nutritional state, general demeanour…"></textarea>
+      </div>
+      <div>
+        <div class="flex items-center justify-between"><p class="stat-label">Point-of-Care Results (optional)</p><button class="btn-secondary" type="button" (click)="addPointOfCare()">+ Add result</button></div>
+        <div class="mt-2 space-y-2">
+          @for (row of pointOfCare.controls; track $index; let i = $index) {
+            <div [formGroup]="row" class="grid grid-cols-[1fr_1fr_auto] gap-2">
+              <input class="input" formControlName="key" placeholder="Test (e.g. RBS)" />
+              <input class="input" formControlName="value" placeholder="Result" />
+              <button class="text-xs font-bold text-rose-600" type="button" (click)="removePointOfCare(i)">Remove</button>
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Section C: Assessment -->
+  @if (activeSection() === 'C') {
+    <div formGroupName="assessment" class="card-body space-y-5">
+      <div>
+        <label class="label">Primary Diagnosis <span class="text-rose-600">*</span></label>
+        <textarea class="input" rows="3" formControlName="primaryDiagnosis" placeholder="Type the primary diagnosis"></textarea>
+        <p class="mt-1 text-xs text-slate-500">Free text. Any valid diagnosis description can be entered.</p>
+      </div>
+      <div>
+        <label class="label">Clinical Impression (optional)</label>
+        <textarea class="input" rows="4" formControlName="clinicalImpression" placeholder="Summarise clinical reasoning…"></textarea>
+      </div>
+    </div>
+  }
+
+  <!-- Section D: Plan -->
+  @if (activeSection() === 'D') {
+    <div formGroupName="plan" class="card-body space-y-5">
+      <div>
+        <div class="flex items-center justify-between"><p class="stat-label">Prescriptions</p><button class="btn-secondary" type="button" (click)="addPrescription()">+ Add medication</button></div>
+        <div class="mt-2 space-y-3">
+          @for (row of prescriptions.controls; track $index; let i = $index) {
+            <div [formGroup]="row" class="rounded-xl border border-slate-200 p-4">
+              <div class="grid gap-3 md:grid-cols-3">
+                <div class="md:col-span-2">
+                  <label class="label">Medication <span class="text-rose-600">*</span></label>
+                  <app-stock-select [options]="filteredMedications(i)" [selectedId]="row.get('medicationId')?.value || ''"
+                    [display]="row.get('medicationName')?.value || ''" [query]="medicationQueries()[i] ?? ''"
+                    [loading]="medicationLoading()" [searched]="medicationSearched()"
+                    (queryChange)="onMedicationQuery(i, $event)" (selected)="onMedicationSelected(i, $event)" />
+                </div>
+                <div><label class="label">Dosage <span class="text-rose-600">*</span></label><input class="input" formControlName="dosage" placeholder="500 mg" /></div>
+                <div><label class="label">Route <span class="text-rose-600">*</span></label><select class="input" formControlName="route"><option value="">Select…</option>@for (route of medicationRoutes; track route) {<option [value]="route">{{ route }}</option>}</select></div>
+                <div><label class="label">Frequency <span class="text-rose-600">*</span></label><select class="input" formControlName="frequency"><option value="">Select…</option>@for (frequency of medicationFrequencies; track frequency) {<option [value]="frequency">{{ frequency }}</option>}</select></div>
+                <div>
+                  <label class="label">Duration <span class="text-rose-600">*</span></label>
+                  <div class="flex gap-2"><input class="input" type="number" min="1" formControlName="durationValue" /><select class="input w-28" formControlName="durationUnit">@for (unit of durationUnits; track unit) {<option [value]="unit">{{ unit }}</option>}</select></div>
+                </div>
+                <div>
+                  <label class="label">Quantity (derived)</label>
+                  <input class="input" type="number" min="1" formControlName="quantity" [disabled]="true" />
+                  <p class="mt-1 text-xs text-slate-500">Frequency × duration — auto-calculated</p>
+                </div>
+              </div>
+              <div class="mt-3 flex items-end gap-2">
+                <div class="flex-1"><label class="label">Instructions (optional)</label><input class="input" formControlName="instructions" /></div>
+                <button class="btn-danger" type="button" (click)="removePrescription(i)">Remove</button>
+              </div>
+            </div>
+          }
+        </div>
+      </div>
+
+      <div>
+        <div class="flex items-center justify-between"><p class="stat-label">Lab &amp; Imaging Orders</p><button class="btn-secondary" type="button" (click)="addOrder()">+ Add test</button></div>
+        <div class="mt-2 space-y-2">
+          @for (row of orders.controls; track $index; let i = $index) {
+            <div [formGroup]="row" class="grid gap-2 rounded-xl border border-slate-200 p-4 md:grid-cols-[2fr_1fr_1.5fr_auto]">
+              <div>
+                <label class="label">Test <span class="text-rose-600">*</span></label>
+                <app-stock-select [options]="filteredInvestigations(i)" [selectedId]="row.get('testId')?.value || ''"
+                  [display]="row.get('testName')?.value || ''" [query]="orderQueries()[i] ?? ''"
+                  [loading]="investigationLoading()" [searched]="investigationSearched()"
+                  (queryChange)="onOrderQuery(i, $event)" (selected)="onOrderSelected(i, $event)" />
+              </div>
+              <div><label class="label">Priority</label><select class="input" formControlName="priority">@for (priority of orderPriorities; track priority) {<option [value]="priority">{{ priority }}</option>}</select></div>
+              <div><label class="label">Clinical note</label><input class="input" formControlName="clinicalNote" /></div>
+              <button class="self-end text-xs font-bold text-rose-600" type="button" (click)="removeOrder(i)">Remove</button>
+            </div>
+          }
+        </div>
+      </div>
+
+      <div>
+        <div class="flex items-center justify-between"><p class="stat-label">Procedures (from Stocks)</p><button class="btn-secondary" type="button" (click)="addProcedureRequest()">+ Add procedure</button></div>
+        <div class="mt-2 space-y-2">
+          @for (row of procedureRequests.controls; track $index; let i = $index) {
+            <div [formGroup]="row" class="grid gap-2 rounded-xl border border-slate-200 p-4 md:grid-cols-[2fr_1fr_1.5fr_auto]">
+              <div>
+                <label class="label">Procedure <span class="text-rose-600">*</span></label>
+                <app-stock-select [options]="filteredProcedures(i)" [selectedId]="row.get('testId')?.value || ''"
+                  [display]="row.get('testName')?.value || ''" [query]="procedureQueries()[i] ?? ''"
+                  [loading]="procedureLoading()" [searched]="procedureSearched()"
+                  (queryChange)="onProcedureQuery(i, $event)" (selected)="onProcedureSelected(i, $event)" />
+              </div>
+              <div><label class="label">Priority</label><select class="input" formControlName="priority">@for (priority of orderPriorities; track priority) {<option [value]="priority">{{ priority }}</option>}</select></div>
+              <div><label class="label">Clinical note</label><input class="input" formControlName="clinicalNote" /></div>
+              <button class="self-end text-xs font-bold text-rose-600" type="button" (click)="removeProcedureRequest(i)">Remove</button>
+            </div>
+          }
+        </div>
+      </div>
+
+      <div>
+        <label class="label">Patient Advice / Counselling (lifestyle, red-flag return symptoms)</label>
+        <textarea class="input" rows="3" formControlName="advice"></textarea>
+      </div>
+
+      <div class="grid gap-4 md:grid-cols-3">
+        <div>
+          <label class="label">Disposition <span class="text-rose-600">*</span></label>
+          <select class="input" formControlName="disposition">
+            <option value="">Select…</option>
+            @for (option of dispositionOptions; track option.value) {
+              @if (context().encounterType === 'Outpatient' && option.value === 'Discharge') { @continue }
+              @if (context().encounterType === 'Inpatient' && option.value === 'Admit') { @continue }
+              <option [value]="option.value">{{ option.label }}</option>
+            }
+          </select>
+        </div>
+        @if (form.controls.plan.controls.disposition.value === 'FollowUp') {
+          <div><label class="label">Follow-up Date <span class="text-rose-600">*</span></label><input class="input" type="date" formControlName="followUpDate" /></div>
+        }
+        @if (form.controls.plan.controls.disposition.value === 'ReferToSpecialist') {
+          <div class="md:col-span-2"><label class="label">Referral Details <span class="text-rose-600">*</span></label><textarea class="input" rows="2" formControlName="referralDetails"></textarea></div>
+        }
+      </div>
+      @if (form.controls.plan.hasError('followUpDateRequired')) {<p class="text-xs font-semibold text-rose-600">A follow-up date is required.</p>}
+      @if (form.controls.plan.hasError('referralDetailsRequired')) {<p class="text-xs font-semibold text-rose-600">Referral details are required.</p>}
+      @if (form.controls.plan.controls.disposition.value === 'Admit') {
+        <p class="text-xs text-slate-500">Signing admits the patient: a ward admission and an inpatient encounter are created.</p>
+      }
+      @if (form.controls.plan.controls.disposition.value === 'Discharge' && context().encounterType === 'Inpatient') {
+        <p class="text-xs text-slate-500">Signing closes treatment and starts billing; Finance clearance completes the discharge.</p>
+      }
+    </div>
+  }
+
+  <!-- Sticky action bar -->
+  <div class="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white/95 px-5 py-3 backdrop-blur">
+    <p class="text-xs text-slate-500">
+      @if (locked()) { Signed and locked. } @else { Draft is editable until signed. }
+    </p>
+    <div class="flex gap-2">
+      <button class="btn-secondary" type="button" [disabled]="locked()" (click)="saveDraft()">Save Draft</button>
+      <button class="btn-primary" type="button" [disabled]="locked()" (click)="sign()">Sign &amp; Complete</button>
+    </div>
+  </div>
+</form>

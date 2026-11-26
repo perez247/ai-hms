@@ -1,5 +1,7 @@
 namespace Hms.Application.DTOs;
 
+public sealed record AdjustPrescriptionQuantityRequest(decimal QuantityPrescribed);
+
 public sealed record PharmacyQueueItemDto(Guid EncounterId, string EncounterNumber, string PatientName, bool IsInpatient, string PrescriptionStatus, DateTimeOffset CreatedAt);
 
 public sealed record PharmacyPrescriptionItemDto(
@@ -26,7 +28,9 @@ public sealed record PharmacyPrescriptionDto(
     bool IsInpatient,
     string Status,
     string? Notes,
-    IReadOnlyList<PharmacyPrescriptionItemDto> Items);
+    IReadOnlyList<PharmacyPrescriptionItemDto> Items,
+    bool CanCommitToFinance = false,
+    string? CommitBlockedReason = null);
 
 public sealed record DispenseItemRequest(Guid PrescriptionItemId, decimal Quantity);
 

@@ -26,7 +26,7 @@
       <div class="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">Appointment {{ appointment.appointmentNumber }} · {{ appointment.scheduledAt | date:'medium' }} with {{ appointment.doctorName }}</div>
     }
     @if (patient(); as patient) {
-      <div class="mt-5 grid gap-5 lg:grid-cols-[1fr_380px]">
+      <div class="mt-5 grid gap-5 lg:grid-cols-[1fr_600px]">
         <form class="card" (ngSubmit)="saveVitals()">
           <div class="card-header"><h2 class="font-bold">Record vitals · {{ patient.patientNumber }}</h2><p class="text-xs text-slate-500">{{ patient.fullName }}</p></div>
           <div class="card-body grid gap-3 sm:grid-cols-3">
@@ -65,12 +65,12 @@
 
   @if (tab() === 'scheduled') {
     <div class="card mt-5 overflow-hidden">
-      <div class="card-header flex items-center justify-between"><h2 class="font-bold">Scheduled appointments not concluded</h2><button class="btn-secondary" type="button" (click)="loadAppointments()">Refresh</button></div>
+      <div class="card-header flex items-center justify-between"><div><h2 class="font-bold">Scheduled appointments awaiting vitals</h2><p class="text-xs text-slate-500">Paid or HMO-invoiced appointments leave this list automatically.</p></div><button class="btn-secondary" type="button" (click)="loadAppointments()">Refresh</button></div>
       <div class="overflow-x-auto"><table class="table"><thead><tr><th>Patient</th><th>Doctor</th><th>Scheduled</th><th>Status</th><th></th></tr></thead><tbody>
         @for (row of appointments(); track row.id) {
           <tr><td><p class="font-semibold">{{ row.patientName }}</p><p class="text-xs text-slate-500">{{ row.patientNumber }}</p></td><td>{{ row.doctorName }}</td><td>{{ row.scheduledAt | date:'medium' }}</td><td><span class="badge-blue">{{ row.status }}</span></td><td class="text-right"><button class="btn-secondary" type="button" (click)="selectPatient(row.patientNumber, { appointment: row })">Record vitals</button></td></tr>
         }
-        @if (appointments().length === 0) {<tr><td colspan="5" class="py-10 text-center text-slate-500">No pending appointments.</td></tr>}
+        @if (appointments().length === 0) {<tr><td colspan="5" class="py-10 text-center text-slate-500">No appointments awaiting vitals.</td></tr>}
       </tbody></table></div>
     </div>
   }

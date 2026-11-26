@@ -1,4 +1,4 @@
-import { Component, OnInit, TemplateRef, ViewChild, ViewContainerRef, inject, signal } from '@angular/core';
+import { Component, OnInit, TemplateRef, ViewChild, ViewContainerRef, computed, inject, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
@@ -38,6 +38,10 @@ export class FitnessComponent implements OnInit {
 
   readonly auth = inject(AuthService);
   readonly items = signal<FitnessCertificate[]>([]);
+  // Chronology is taken from `fitnessDate` — the request date already shown in the detail dialog.
+  // Certificate numbers are sequential, so they are used as a stable tie-breaker for same-day records.
+  readonly sortedItems = computed(() => [...this.items()].sort((a, b) =>
+    b.fitnessDate.localeCompare(a.fitnessDate) || b.certificateNumber.localeCompare(a.certificateNumber)));
   readonly stageFilter = signal('');
   readonly paymentTypeFilter = signal('');
   readonly paymentStatusFilter = signal('');
@@ -70,7 +74,7 @@ export class FitnessComponent implements OnInit {
     if (this.auth.hasPermission('fitness.create')) {
       this.api.reference.hmos().subscribe({
         next: (hmos) => this.hmos.set(hmos),
-        error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load HMO options.'),
+        error: (err) => void err,
       });
     }
   }
@@ -80,7 +84,7 @@ export class FitnessComponent implements OnInit {
     this.api.fitness.search(null, null, null, null, 1,
       this.stageFilter() || null, this.paymentTypeFilter() || null, this.paymentStatusFilter() || null).subscribe({
       next: (page) => this.items.set(page.items),
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load fitness records.'),
+      error: (err) => void err,
     });
   }
 
@@ -131,7 +135,7 @@ export class FitnessComponent implements OnInit {
         this.resetBasic();
         this.load();
       },
-      error: (err) => { this.busy.set(false); this.toast.error(err?.error?.detail ?? 'Could not create the fitness record.'); },
+      error: (err) => { this.busy.set(false); void err; },
     });
   }
 
@@ -140,6 +144,12 @@ export class FitnessComponent implements OnInit {
     this.findings.set(item.investigationResults.length > 0
       ? item.investigationResults.map((finding) => ({ ...finding }))
       : DEFAULT_FINDINGS());
+  }
+
+  /** Launched from the detail dialog: close it, then reveal the inline nurse-review card. */
+  startNurseReviewFromDetail(item: FitnessCertificate): void {
+    this.closeDetail();
+    this.startNurseReview(item);
   }
 
   cancelNurseReview(): void {
@@ -171,10 +181,10 @@ export class FitnessComponent implements OnInit {
       next: () => {
         this.api.fitness.submit(record.id).subscribe({
           next: () => { this.busy.set(false); this.toast.success('Fitness sent to the Doctor.'); this.cancelNurseReview(); this.load(); },
-          error: (err) => { this.busy.set(false); this.toast.error(err?.error?.detail ?? 'Could not send to the Doctor.'); },
+          error: (err) => { this.busy.set(false); void err; },
         });
       },
-      error: (err) => { this.busy.set(false); this.toast.error(err?.error?.detail ?? 'Could not save investigation findings.'); },
+      error: (err) => { this.busy.set(false); void err; },
     });
   }
 
@@ -190,14 +200,19 @@ export class FitnessComponent implements OnInit {
         this.closeDetail();
         this.load();
       },
-      error: (err) => { this.busy.set(false); this.toast.error(err?.error?.detail ?? 'Could not save the Doctor decision.'); },
+      error: (err) => { this.busy.set(false); void err; },
     });
   }
 
   setPayment(item: FitnessCertificate, paid: boolean): void {
     this.api.fitness.setPayment(item.id, paid).subscribe({
-      next: () => { this.toast.success(paid ? 'Marked paid.' : 'Marked unpaid.'); this.load(); },
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not update payment status.'),
+      next: (updated) => {
+        this.toast.success(paid ? 'Marked paid.' : 'Marked unpaid.');
+        // Keep the open dialog in sync with the new payment status.
+        if (this.detail()?.id === updated.id) this.detail.set(updated);
+        this.load();
+      },
+      error: (err) => void err,
     });
   }
 
@@ -205,6 +220,8 @@ export class FitnessComponent implements OnInit {
     this.api.fitness.export(null, null, null, null,
       this.stageFilter() || null, this.paymentTypeFilter() || null, this.paymentStatusFilter() || null);
   }
+
+  itemIsPrivate(item: FitnessCertificate): boolean { return item.paymentType === 'Private'; }
 
   statusClass(status: string): string {
     if (status === 'Approved' || status === 'Paid') return 'badge-green';

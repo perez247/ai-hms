@@ -39,7 +39,7 @@ export class StaffProfileComponent implements OnInit {
     const request = id ? this.api.staff.get(id) : this.api.staff.me();
     request.subscribe({
       next: (staff) => this.profile.set(staff),
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load the staff profile.'),
+      error: (err) => void err,
     });
   }
 }

@@ -29,17 +29,22 @@ public class HmsDbContext(DbContextOptions<HmsDbContext> options)
     public DbSet<Encounter> Encounters => Set<Encounter>();
     public DbSet<Vital> Vitals => Set<Vital>();
     public DbSet<BedDay> BedDays => Set<BedDay>();
-    public DbSet<Medication> Medications => Set<Medication>();
+    public DbSet<StockItem> StockItems => Set<StockItem>();
+    public DbSet<StockItem> Medications => Set<StockItem>();
+    public DbSet<StockItem> InvestigationCatalogItems => Set<StockItem>();
+    public DbSet<StockItem> SurgeryCatalogItems => Set<StockItem>();
+    public DbSet<ItemPrice> ItemPrices => Set<ItemPrice>();
+    public DbSet<ServiceRequest> ServiceRequests => Set<ServiceRequest>();
+    public DbSet<ServiceResult> ServiceResults => Set<ServiceResult>();
+    public DbSet<ServiceResultRevision> ServiceResultRevisions => Set<ServiceResultRevision>();
     public DbSet<StockMovement> StockMovements => Set<StockMovement>();
     public DbSet<Prescription> Prescriptions => Set<Prescription>();
     public DbSet<PrescriptionItem> PrescriptionItems => Set<PrescriptionItem>();
     public DbSet<Dispense> Dispenses => Set<Dispense>();
     public DbSet<DispenseItem> DispenseItems => Set<DispenseItem>();
     public DbSet<MedicationAdministration> MedicationAdministrations => Set<MedicationAdministration>();
-    public DbSet<InvestigationCatalogItem> InvestigationCatalogItems => Set<InvestigationCatalogItem>();
     public DbSet<InvestigationOrder> InvestigationOrders => Set<InvestigationOrder>();
     public DbSet<InvestigationParticipant> InvestigationParticipants => Set<InvestigationParticipant>();
-    public DbSet<SurgeryCatalogItem> SurgeryCatalogItems => Set<SurgeryCatalogItem>();
     public DbSet<SurgeryCase> SurgeryCases => Set<SurgeryCase>();
     public DbSet<SurgeryParticipant> SurgeryParticipants => Set<SurgeryParticipant>();
     public DbSet<Bill> Bills => Set<Bill>();
@@ -68,8 +73,13 @@ public class HmsDbContext(DbContextOptions<HmsDbContext> options)
         configurationBuilder.Properties<Sex>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<PatientStatus>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<AppointmentStatus>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<FundingSource>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<StockItemType>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<ServiceRequestStatus>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<ServiceResultStatus>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<EncounterType>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<EncounterStatus>().HaveConversion<string>().HaveMaxLength(20);
+        configurationBuilder.Properties<EncounterDisposition>().HaveConversion<string>().HaveMaxLength(30);
         configurationBuilder.Properties<AdmissionStatus>().HaveConversion<string>().HaveMaxLength(30);
         configurationBuilder.Properties<WardType>().HaveConversion<string>().HaveMaxLength(20);
         configurationBuilder.Properties<BillKind>().HaveConversion<string>().HaveMaxLength(40);
@@ -205,6 +215,8 @@ public class HmsDbContext(DbContextOptions<HmsDbContext> options)
                 .HasFilter("status IN ('Scheduled', 'CheckedIn')");
             b.HasIndex(x => new { x.PatientId, x.ScheduledAt });
             b.ToTable(t => t.HasCheckConstraint("ck_appointment_duration", "duration_minutes > 0"));
+            b.ToTable(t => t.HasCheckConstraint("ck_appointment_funding",
+                "(funding_source = 'Private' AND hmo_enrollment_id IS NULL) OR (funding_source = 'Hmo' AND hmo_enrollment_id IS NOT NULL)"));
         });
 
         modelBuilder.Entity<Admission>(b =>
@@ -230,17 +242,26 @@ public class HmsDbContext(DbContextOptions<HmsDbContext> options)
             b.HasIndex(x => new { x.PatientId, x.StartedAt });
             b.HasIndex(x => new { x.DoctorId, x.StartedAt });
             b.HasIndex(x => x.AdmissionId);
+            b.Property(x => x.Examination).HasMaxLength(4000);
+            b.Property(x => x.ClerkingDetails).HasColumnType("text");
+            b.Property(x => x.PresentingComplaint).HasMaxLength(1000);
+            b.Property(x => x.HistoryOfPresentingComplaint).HasMaxLength(1000);
+            b.Property(x => x.PastMedicalSurgicalHistory).HasMaxLength(1000);
+            b.Property(x => x.FamilyHistory).HasMaxLength(1000);
+            b.Property(x => x.Diagnosis).HasMaxLength(1000);
             b.ToTable(t => t.HasCheckConstraint("ck_encounter_admission",
                 "(type = 'Outpatient' AND admission_id IS NULL) OR (type = 'Inpatient' AND admission_id IS NOT NULL)"));
+            b.ToTable(t => t.HasCheckConstraint("ck_encounter_funding",
+                "(funding_source = 'Private' AND hmo_enrollment_id IS NULL) OR (funding_source = 'Hmo' AND hmo_enrollment_id IS NOT NULL)"));
         });
 
         modelBuilder.Entity<Vital>(b =>
         {
-            b.HasOne(x => x.Patient).WithMany().HasForeignKey(x => x.PatientId).OnDelete(DeleteBehavior.Restrict);
-            b.HasOne(x => x.Encounter).WithMany(x => x.Vitals).HasForeignKey(x => x.EncounterId).OnDelete(DeleteBehavior.Cascade);
+            // Vitals belong to the patient, never directly to an encounter. The patient's
+            // Vitals collection is the one inverse navigation used by EF.
+            b.HasOne(x => x.Patient).WithMany(x => x.Vitals).HasForeignKey(x => x.PatientId).OnDelete(DeleteBehavior.Restrict);
             b.HasOne<AppUser>().WithMany().HasForeignKey(x => x.NurseId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(x => new { x.PatientId, x.RecordedAt });
-            b.HasIndex(x => new { x.EncounterId, x.RecordedAt });
             b.ToTable(t => t.HasCheckConstraint("ck_vitals_pain", "pain_score IS NULL OR (pain_score >= 0 AND pain_score <= 10)"));
         });
 
@@ -251,18 +272,53 @@ public class HmsDbContext(DbContextOptions<HmsDbContext> options)
             b.ToTable(t => t.HasCheckConstraint("ck_bed_day_rate", "rate >= 0"));
         });
 
-        modelBuilder.Entity<Medication>(b =>
+        modelBuilder.Entity<StockItem>(b =>
         {
             b.HasIndex(x => x.Code).IsUnique();
             b.HasIndex(x => new { x.Name, x.IsActive });
-            b.ToTable(t => t.HasCheckConstraint("ck_medication_price", "unit_price >= 0"));
-            b.ToTable(t => t.HasCheckConstraint("ck_medication_stock", "stock_on_hand >= 0"));
+            b.ToTable(t => t.HasCheckConstraint("ck_stock_item_code", "code <> ''"));
+            b.ToTable(t => t.HasCheckConstraint("ck_stock_item_quantity", "quantity >= 0"));
+        });
+
+        modelBuilder.Entity<ItemPrice>(b =>
+        {
+            b.ToTable("stock_item_prices");
+            b.HasOne(x => x.StockItem).WithMany(x => x.Prices).HasForeignKey(x => x.StockItemId).OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(x => x.HmoCompany).WithMany().HasForeignKey(x => x.HmoCompanyId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => new { x.StockItemId, x.PayerId }).IsUnique();
+            b.ToTable(t => t.HasCheckConstraint("ck_item_price_amount", "unit_price >= 0 AND coverage_percent >= 0 AND coverage_percent <= 100"));
+        });
+
+        modelBuilder.Entity<ServiceRequest>(b =>
+        {
+            b.HasOne(x => x.Encounter).WithMany(x => x.ServiceRequests).HasForeignKey(x => x.EncounterId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.Patient).WithMany().HasForeignKey(x => x.PatientId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.StockItem).WithMany().HasForeignKey(x => x.StockItemId).OnDelete(DeleteBehavior.Restrict);
+            b.HasIndex(x => x.RequestNumber).IsUnique();
+            b.HasIndex(x => new { x.EncounterId, x.Kind, x.Status });
+            b.HasIndex(x => new { x.Kind, x.Status });
+            b.ToTable(t => t.HasCheckConstraint("ck_service_request_price", "unit_price_snapshot >= 0"));
+        });
+
+        modelBuilder.Entity<ServiceResult>(b =>
+        {
+            b.HasOne(x => x.Request).WithMany().HasForeignKey(x => x.RequestId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => x.RequestId).IsUnique();
+            b.HasIndex(x => x.Status);
+        });
+
+        modelBuilder.Entity<ServiceResultRevision>(b =>
+        {
+            b.HasOne(x => x.Result).WithMany().HasForeignKey(x => x.ResultId).OnDelete(DeleteBehavior.Cascade);
+            b.HasIndex(x => new { x.ResultId, x.Version }).IsUnique();
         });
 
         modelBuilder.Entity<StockMovement>(b =>
         {
-            b.HasOne(x => x.Medication).WithMany().HasForeignKey(x => x.MedicationId).OnDelete(DeleteBehavior.Restrict);
-            b.HasIndex(x => new { x.MedicationId, x.CreatedAt });
+            b.HasOne(x => x.StockItem).WithMany().HasForeignKey(x => x.StockItemId).OnDelete(DeleteBehavior.Restrict);
+            b.Ignore(x => x.MedicationId);
+            b.Ignore(x => x.Medication);
+            b.HasIndex(x => new { x.StockItemId, x.CreatedAt });
         });
 
         modelBuilder.Entity<Prescription>(b =>
@@ -275,7 +331,9 @@ public class HmsDbContext(DbContextOptions<HmsDbContext> options)
         modelBuilder.Entity<PrescriptionItem>(b =>
         {
             b.HasOne(x => x.Prescription).WithMany(x => x.Items).HasForeignKey(x => x.PrescriptionId).OnDelete(DeleteBehavior.Cascade);
-            b.HasOne(x => x.Medication).WithMany().HasForeignKey(x => x.MedicationId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.StockItem).WithMany().HasForeignKey(x => x.StockItemId).OnDelete(DeleteBehavior.Restrict);
+            b.Ignore(x => x.MedicationId);
+            b.Ignore(x => x.Medication);
             b.Property(x => x.QuantityPrescribed).HasPrecision(18, 3);
             b.Property(x => x.QuantityDispensed).HasPrecision(18, 3);
             b.ToTable(t => t.HasCheckConstraint("ck_prescription_quantity", "quantity_prescribed > 0 AND quantity_dispensed >= 0"));
@@ -293,7 +351,9 @@ public class HmsDbContext(DbContextOptions<HmsDbContext> options)
         {
             b.HasOne(x => x.Dispense).WithMany(x => x.Items).HasForeignKey(x => x.DispenseId).OnDelete(DeleteBehavior.Cascade);
             b.HasOne(x => x.PrescriptionItem).WithMany().HasForeignKey(x => x.PrescriptionItemId).OnDelete(DeleteBehavior.Restrict);
-            b.HasOne(x => x.Medication).WithMany().HasForeignKey(x => x.MedicationId).OnDelete(DeleteBehavior.Restrict);
+            b.HasOne(x => x.StockItem).WithMany().HasForeignKey(x => x.StockItemId).OnDelete(DeleteBehavior.Restrict);
+            b.Ignore(x => x.MedicationId);
+            b.Ignore(x => x.Medication);
             b.HasOne(x => x.TariffItem).WithMany().HasForeignKey(x => x.TariffItemId).OnDelete(DeleteBehavior.Restrict);
             b.Property(x => x.Quantity).HasPrecision(18, 3);
             b.ToTable(t => t.HasCheckConstraint("ck_dispense_quantity", "quantity > 0"));
@@ -310,12 +370,6 @@ public class HmsDbContext(DbContextOptions<HmsDbContext> options)
             b.ToTable(t => t.HasCheckConstraint("ck_administration_dose", "dose_given > 0"));
         });
 
-        modelBuilder.Entity<InvestigationCatalogItem>(b =>
-        {
-            b.HasIndex(x => x.Code).IsUnique();
-            b.ToTable(t => t.HasCheckConstraint("ck_investigation_price", "price >= 0"));
-        });
-
         modelBuilder.Entity<InvestigationOrder>(b =>
         {
             b.HasOne(x => x.Encounter).WithMany(x => x.Investigations).HasForeignKey(x => x.EncounterId).OnDelete(DeleteBehavior.Restrict);
@@ -329,12 +383,6 @@ public class HmsDbContext(DbContextOptions<HmsDbContext> options)
             b.HasOne(x => x.InvestigationOrder).WithMany(x => x.Participants).HasForeignKey(x => x.InvestigationOrderId).OnDelete(DeleteBehavior.Cascade);
             b.HasOne<AppUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
             b.HasIndex(x => new { x.InvestigationOrderId, x.UserId, x.ProcedureRole }).IsUnique();
-        });
-
-        modelBuilder.Entity<SurgeryCatalogItem>(b =>
-        {
-            b.HasIndex(x => x.Code).IsUnique();
-            b.ToTable(t => t.HasCheckConstraint("ck_surgery_price", "price >= 0"));
         });
 
         modelBuilder.Entity<SurgeryCase>(b =>
@@ -379,7 +427,7 @@ public class HmsDbContext(DbContextOptions<HmsDbContext> options)
                 t.HasCheckConstraint("ck_bill_hmo_approval", "status NOT IN ('HmoApproved', 'Approved', 'Paid') OR payer_type <> 'Hmo' OR hmo_approved_at IS NOT NULL");
                 t.HasCheckConstraint("ck_bill_hmo_context", "payer_type <> 'Hmo' OR hmo_company_id IS NOT NULL");
                 t.HasCheckConstraint("ck_bill_context",
-                    "(kind = 'OutpatientEncounter' AND encounter_id IS NOT NULL) OR (kind = 'Emergency' AND encounter_id IS NOT NULL) OR (kind = 'InpatientAdmission' AND admission_id IS NOT NULL) OR (kind = 'Appointment' AND appointment_id IS NOT NULL) OR (kind = 'Registration' AND registration_period_id IS NOT NULL) OR (kind = 'FitnessCertificate' AND fitness_certificate_id IS NOT NULL) OR (kind = 'Manual')");
+                    "(kind = 'Visit' AND (encounter_id IS NOT NULL OR admission_id IS NOT NULL OR appointment_id IS NOT NULL)) OR (kind = 'OutpatientEncounter' AND encounter_id IS NOT NULL) OR (kind = 'Emergency' AND encounter_id IS NOT NULL) OR (kind = 'InpatientAdmission' AND admission_id IS NOT NULL) OR (kind = 'Appointment' AND appointment_id IS NOT NULL) OR (kind = 'Registration' AND registration_period_id IS NOT NULL) OR (kind = 'FitnessCertificate' AND fitness_certificate_id IS NOT NULL) OR (kind = 'Manual')");
             });
         });
 
@@ -506,5 +554,6 @@ public class HmsDbContext(DbContextOptions<HmsDbContext> options)
         modelBuilder.HasSequence<long>("bill_number_seq", "clinic").StartsAt(1000);
         modelBuilder.HasSequence<long>("certificate_number_seq", "clinic").StartsAt(1000);
         modelBuilder.HasSequence<long>("account_entry_seq", "clinic").StartsAt(1000);
+        modelBuilder.HasSequence<long>("service_request_number_seq", "clinic").StartsAt(1000);
     }
 }

@@ -26,18 +26,13 @@ export class HmoProfileComponent implements OnInit {
   readonly fitness = signal<FitnessCertificate[] | null>(null);
   readonly selected = signal<Set<string>>(new Set());
   readonly loading = signal(false);
-  readonly tariffCode = signal('');
-  readonly tariffDescription = signal('');
-  readonly tariffUnitPrice = signal<number | null>(null);
-  readonly tariffCoverage = signal(100);
-  readonly savingTariff = signal(false);
 
   get hmoId(): string { return this.route.snapshot.paramMap.get('id') ?? ''; }
 
   ngOnInit(): void {
     this.api.reference.hmos().subscribe({
       next: (hmos) => this.hmo.set(hmos.find((hmo) => hmo.id === this.hmoId) ?? null),
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load the HMO.'),
+      error: (err) => void err,
     });
     this.loadTariffs();
   }
@@ -46,31 +41,6 @@ export class HmoProfileComponent implements OnInit {
     this.api.hmo.directory().subscribe({
       next: (entries) => this.directoryEntry.set(entries.find((entry) => entry.id === this.hmoId) ?? null),
       error: () => this.directoryEntry.set(null),
-    });
-  }
-
-  get canManageTariffs(): boolean { return this.auth.hasPermission('hmo.tariff.manage'); }
-
-  saveTariff(): void {
-    const code = this.tariffCode().trim();
-    const unitPrice = this.tariffUnitPrice();
-    if (!code || unitPrice === null) { this.toast.error('Enter a medication code and negotiated unit price.'); return; }
-    this.savingTariff.set(true);
-    this.api.hmo.saveTariff(this.hmoId, {
-      name: 'Negotiated medication tariff', effectiveFrom: new Date().toISOString().slice(0, 10), effectiveTo: null,
-      items: [{
-        code, description: this.tariffDescription().trim() || code, category: 'Medication',
-        unit: 'unit', unitPrice: Number(unitPrice), coveragePercent: Number(this.tariffCoverage()),
-        requiresPriorAuthorization: false,
-      }],
-    }).subscribe({
-      next: () => {
-        this.savingTariff.set(false);
-        this.toast.success('Tariff saved. It is now the active tariff for this HMO.');
-        this.tariffCode.set(''); this.tariffDescription.set(''); this.tariffUnitPrice.set(null); this.tariffCoverage.set(100);
-        this.loadTariffs();
-      },
-      error: (err) => { this.savingTariff.set(false); this.toast.error(err?.error?.detail ?? 'Could not save the tariff.'); },
     });
   }
 
@@ -85,7 +55,7 @@ export class HmoProfileComponent implements OnInit {
         this.fitness.set(page.items.filter((item) => item.status === 'Approved'));
         this.loading.set(false);
       },
-      error: (err) => { this.loading.set(false); this.toast.error(err?.error?.detail ?? 'Could not load HMO fitness records.'); },
+      error: (err) => { this.loading.set(false); void err; },
     });
   }
 
@@ -102,7 +72,7 @@ export class HmoProfileComponent implements OnInit {
     if (ids.length === 0) { this.toast.error('Select at least one fitness record.'); return; }
     this.api.fitness.batchPayment(this.hmoId, ids, paid).subscribe({
       next: () => { this.toast.success(paid ? 'Selected HMO fitness records marked paid.' : 'Selected records marked unpaid.'); this.selected.set(new Set()); this.fetchFitness(); },
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not update HMO fitness payments.'),
+      error: (err) => void err,
     });
   }
 

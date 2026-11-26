@@ -3,27 +3,12 @@ using Hms.Domain.Enums;
 
 namespace Hms.Domain.Entities;
 
-public class Medication : Entity
-{
-    public string Code { get; set; } = string.Empty;
-    public string Name { get; set; } = string.Empty;
-    public string? GenericName { get; set; }
-    public string? Form { get; set; }
-    public string? Strength { get; set; }
-    public string Unit { get; set; } = "unit";
-    public decimal UnitPrice { get; set; }
-    public string? TariffCode { get; set; }
-    public decimal StockOnHand { get; set; }
-    public decimal ReorderLevel { get; set; }
-    public bool IsActive { get; set; } = true;
-    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
-    public DateTimeOffset? UpdatedAt { get; set; }
-}
-
 public class StockMovement : Entity
 {
-    public Guid MedicationId { get; set; }
-    public Medication? Medication { get; set; }
+    public Guid StockItemId { get; set; }
+    public StockItem? StockItem { get; set; }
+    public Guid MedicationId { get => StockItemId; set => StockItemId = value; }
+    public StockItem? Medication { get => StockItem; set => StockItem = value; }
     public StockMovementType MovementType { get; set; }
     public decimal QuantityDelta { get; set; }
     public decimal? UnitCost { get; set; }
@@ -53,8 +38,10 @@ public class PrescriptionItem : Entity
 {
     public Guid PrescriptionId { get; set; }
     public Prescription? Prescription { get; set; }
-    public Guid MedicationId { get; set; }
-    public Medication? Medication { get; set; }
+    public Guid StockItemId { get; set; }
+    public StockItem? StockItem { get; set; }
+    public Guid MedicationId { get => StockItemId; set => StockItemId = value; }
+    public StockItem? Medication { get => StockItem; set => StockItem = value; }
     public string Dose { get; set; } = string.Empty;
     public string Route { get; set; } = string.Empty;
     public string Frequency { get; set; } = string.Empty;
@@ -93,8 +80,10 @@ public class DispenseItem : Entity
     public Dispense? Dispense { get; set; }
     public Guid PrescriptionItemId { get; set; }
     public PrescriptionItem? PrescriptionItem { get; set; }
-    public Guid MedicationId { get; set; }
-    public Medication? Medication { get; set; }
+    public Guid StockItemId { get; set; }
+    public StockItem? StockItem { get; set; }
+    public Guid MedicationId { get => StockItemId; set => StockItemId = value; }
+    public StockItem? Medication { get => StockItem; set => StockItem = value; }
     public decimal Quantity { get; set; }
     public decimal UnitPrice { get; set; }
     public Guid? TariffItemId { get; set; }

@@ -19,6 +19,10 @@ public sealed record CreatePatientRequest(
     string? Phone,
     string? Email,
     string? Address,
+    string? StateOfOrigin,
+    string? HomeTown,
+    string? Allergy,
+    string? Occupation,
     string? NextOfKinName,
     string? NextOfKinPhone,
     IReadOnlyList<CreateHmoEnrollmentRequest>? HmoEnrollments);
@@ -38,11 +42,17 @@ public sealed record PatientDto(
     Guid Id,
     string PatientNumber,
     string FullName,
+    string FirstName,
+    string LastName,
     Sex Sex,
     DateOnly DateOfBirth,
     string? Phone,
     string? Email,
     string? Address,
+    string? StateOfOrigin,
+    string? HomeTown,
+    string? Allergy,
+    string? Occupation,
     string? NextOfKinName,
     string? NextOfKinPhone,
     DateOnly RegistrationDate,
@@ -67,3 +77,20 @@ public sealed record AddHmoEnrollmentRequest(
     bool IsPrimary);
 
 public sealed record RegistrationRenewalResult(Guid PatientId, DateOnly PeriodEnd, Guid BillId, decimal FeeAmount);
+
+/// <summary>Basic demographic fields a receptionist may edit on an existing patient record.</summary>
+public sealed record UpdatePatientRequest(
+    string FirstName,
+    string? MiddleName,
+    string LastName,
+    Sex Sex,
+    DateOnly DateOfBirth,
+    string? Phone,
+    string? Email,
+    string? Address,
+    string? StateOfOrigin,
+    string? HomeTown,
+    string? Allergy,
+    string? Occupation,
+    string? NextOfKinName,
+    string? NextOfKinPhone);

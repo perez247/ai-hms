@@ -8,7 +8,7 @@ import { StaffRole } from '../../core/models';
   selector: 'app-home',
   imports: [RouterLink],
   template: `
-    <div class="mx-auto max-w-6xl">
+    <div class="mx-auto px-4">
       <div class="overflow-hidden rounded-3xl bg-slate-950 p-8 text-white shadow-xl sm:p-12">
         <p class="text-xs font-bold uppercase tracking-[0.22em] text-teal-300">Clinic operations</p>
         <h1 class="mt-4 max-w-2xl text-4xl font-black tracking-tight sm:text-5xl">
@@ -54,7 +54,7 @@ export class HomeComponent {
     const candidates: Array<{ label: string; path: string; permission: string; roles: StaffRole[] }> = [
       { label: 'Patients', path: '/reception/patients', permission: 'patients.read', roles: ['Receptionist'] },
       { label: 'Pharmacy queue', path: '/pharmacy/prescriptions', permission: 'pharmacy.read', roles: ['Pharmacy'] },
-      { label: 'Finance bills', path: '/finance/bills', permission: 'billing.read', roles: ['Finance'] },
+      { label: 'Bills', path: '/finance/bills', permission: 'billing.read', roles: ['Finance', 'Pharmacy'] },
       { label: 'HMO desk', path: '/hmo/authorizations', permission: 'hmo.read', roles: ['HmoOffice'] },
       { label: 'HR users', path: '/hr/users', permission: 'hr.users.read', roles: ['HrOffice'] },
       { label: 'Configuration', path: '/admin/config', permission: 'admin.fees.manage', roles: ['Admin'] },

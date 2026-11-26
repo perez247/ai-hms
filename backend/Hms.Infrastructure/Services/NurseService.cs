@@ -59,8 +59,22 @@ public sealed class NurseService(
 
     public async Task<IReadOnlyList<NurseAppointmentDto>> GetScheduledAppointmentsAsync(CancellationToken cancellationToken = default)
     {
+        // Appointments stay in the vitals queue while the visit bill is still Draft/Committed and unpaid.
+        // Once any payment is recorded (or the bill is approved/invoiced to the HMO) the visit is
+        // concluded, so it drops out of the queue.
+        // Discharged patients are excluded unless they have a new appointment after discharge.
+        var dischargedPatientIds = await db.Admissions.AsNoTracking()
+            .Where(x => x.Status == AdmissionStatus.Discharged)
+            .Select(x => x.PatientId)
+            .ToListAsync(cancellationToken);
         var appointments = await db.Appointments.AsNoTracking().Include(x => x.Patient)
             .Where(x => x.Status != AppointmentStatus.Completed && x.Status != AppointmentStatus.Cancelled && x.Status != AppointmentStatus.NoShow)
+            .Where(x => !dischargedPatientIds.Contains(x.PatientId)
+                || db.Appointments.Any(a => a.PatientId == x.PatientId && a.Id != x.Id && a.Status != AppointmentStatus.Cancelled && a.Status != AppointmentStatus.NoShow))
+            .Where(x => !db.Bills.Any(b => b.AppointmentId == x.Id && b.Status != BillStatus.Void
+                && (b.PaidTotal > 0m
+                    || b.Status == BillStatus.Paid || b.Status == BillStatus.Approved
+                    || b.Status == BillStatus.HmoPending || b.Status == BillStatus.HmoApproved)))
             .OrderBy(x => x.ScheduledAt).Take(100).ToListAsync(cancellationToken);
         var doctorIds = appointments.Select(x => x.DoctorId).Distinct().ToList();
         var doctorNames = await db.Users.AsNoTracking().Where(x => doctorIds.Contains(x.Id))
@@ -89,7 +103,7 @@ public sealed class NurseService(
         var patient = await patients.GetByNumberAsync(patientNumber, cancellationToken);
         var encounters = await db.Encounters.AsNoTracking()
             .Include(x => x.Admission)
-            .Include(x => x.Prescriptions).ThenInclude(x => x.Items).ThenInclude(x => x.Medication)
+            .Include(x => x.Prescriptions).ThenInclude(x => x.Items).ThenInclude(x => x.StockItem)
             .Where(x => x.PatientId == patient.Id && x.Status == EncounterStatus.Open
                 && (x.Admission == null || x.Admission.Status == AdmissionStatus.Active || x.Admission.Status == AdmissionStatus.PendingDischarge))
             .OrderByDescending(x => x.StartedAt)

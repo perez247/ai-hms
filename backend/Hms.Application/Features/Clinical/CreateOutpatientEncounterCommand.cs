@@ -20,6 +20,6 @@ public sealed class CreateOutpatientEncounterCommandValidator : AbstractValidato
     {
         RuleFor(x => x.Request.PatientId).NotEmpty();
         RuleFor(x => x.Request.DoctorId).NotEmpty();
-        RuleFor(x => x.Request.ChiefComplaint).MaximumLength(2000);
+        RuleFor(x => x.Request.PresentingComplaint).MaximumLength(1000);
     }
 }

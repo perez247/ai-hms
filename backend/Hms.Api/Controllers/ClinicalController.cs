@@ -1,6 +1,7 @@
 using Hms.Application.DTOs;
 using Hms.Application.Features.Clinical;
 using Hms.Application.Security;
+using Hms.Domain.Enums;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -38,10 +39,27 @@ public sealed class ClinicalController(IMediator mediator) : ControllerBase
     public async Task<ActionResult<DoctorQueueDto>> GetDoctorQueue(CancellationToken cancellationToken) =>
         Ok(await mediator.Send(new GetDoctorQueueQuery(), cancellationToken));
 
+    [HttpGet("encounters")]
+    [Authorize(Policy = Permissions.EncountersRead)]
+    public async Task<IActionResult> SearchEncounters([FromQuery] EncounterType? type, [FromQuery] EncounterStatus? status,
+        [FromQuery] DateOnly? date, [FromQuery] string? search, CancellationToken cancellationToken) =>
+        Ok(await mediator.Send(new SearchEncountersQuery(type, status, date, search), cancellationToken));
+
     [HttpGet("encounters/{id:guid}")]
     [Authorize(Policy = Permissions.EncountersRead)]
     public async Task<ActionResult<EncounterDto>> GetEncounter(Guid id, CancellationToken cancellationToken) =>
         Ok(await mediator.Send(new GetEncounterQuery(id), cancellationToken));
+
+    [HttpGet("encounters/{id:guid}/results")]
+    [Authorize(Policy = Permissions.EncountersRead)]
+    public async Task<IActionResult> GetEncounterResults(Guid id, [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10, CancellationToken cancellationToken = default) =>
+        Ok(await mediator.Send(new GetEncounterResultsQuery(id, page, pageSize), cancellationToken));
+
+    [HttpPut("encounters/{id:guid}/clerking")]
+    [Authorize(Policy = Permissions.EncountersSign)]
+    public async Task<ActionResult<EncounterDto>> SaveEncounter(Guid id, SaveEncounterRequest request, CancellationToken cancellationToken) =>
+        Ok(await mediator.Send(new SaveEncounterCommand(id, request), cancellationToken));
 
     [HttpGet("admissions/{id:guid}")]
     [Authorize(Policy = Permissions.EncountersRead)]

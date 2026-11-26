@@ -12,7 +12,7 @@ interface HmoCompanyRow { id: string; code: string; name: string; contactPerson:
   selector: 'app-admin',
   imports: [FormsModule, CurrencyPipe, DatePipe],
   template: `
-    <div class="mx-auto max-w-6xl">
+    <div class="mx-auto px-4">
       <p class="text-xs font-bold uppercase tracking-[0.2em] text-teal-700">Administration</p>
       <h1 class="mt-2 text-3xl font-black tracking-tight text-slate-950">Configuration</h1>
       <p class="mt-1 text-sm text-slate-500">Fees, HMO partners, contracts and tariff operations. Admin has all role permissions.</p>
@@ -55,7 +55,7 @@ export class AdminComponent implements OnInit {
   readonly fees = signal<Fee[]>([]);
   readonly hmos = signal<HmoCompanyRow[]>([]);
   readonly notice = signal<string | null>(null);
-  readonly feeCodes = ['RegistrationNew', 'RegistrationRenewal', 'Appointment', 'Emergency', 'InpatientConsultation', 'BedDayGeneral', 'BedDayPrivate', 'FitnessCertificate'];
+  readonly feeCodes = ['RegistrationNew', 'RegistrationRenewal', 'Appointment', 'Emergency', 'BedDayGeneral', 'BedDayPrivate', 'FitnessCertificate'];
   feeCode = 'Appointment';
   feeAmount = 0;
   feeEffective = new Date().toISOString().slice(0, 10);
@@ -65,7 +65,7 @@ export class AdminComponent implements OnInit {
   hmoEmail = '';
 
   ngOnInit(): void {
-    this.api.admin.fees().subscribe({ next: (fees) => this.fees.set(fees), error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load fees.') });
+    this.api.admin.fees().subscribe({ next: (fees) => this.fees.set(fees), error: (err) => void err });
     this.api.admin.hmos().subscribe({ next: (hmos) => this.hmos.set(hmos as HmoCompanyRow[]) });
   }
 
@@ -73,7 +73,7 @@ export class AdminComponent implements OnInit {
     if (!this.feeCode || this.feeAmount < 0) return;
     this.api.admin.createFee({ code: this.feeCode, amount: Number(this.feeAmount), currency: 'NGN', effectiveFrom: this.feeEffective, effectiveTo: null }).subscribe({
       next: () => { this.notice.set('Fee added.'); this.api.admin.fees().subscribe({ next: (fees) => this.fees.set(fees) }); },
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not add fee.'),
+      error: (err) => void err,
     });
   }
 
@@ -81,7 +81,7 @@ export class AdminComponent implements OnInit {
     if (!this.hmoCode.trim() || !this.hmoName.trim()) return;
     this.api.admin.createHmo({ code: this.hmoCode, name: this.hmoName, contactPerson: this.hmoContact || null, email: this.hmoEmail || null, phone: null, address: null, contractTerms: null, metadataJson: null }).subscribe({
       next: () => { this.notice.set('HMO partner registered.'); this.api.admin.hmos().subscribe({ next: (hmos) => this.hmos.set(hmos as HmoCompanyRow[]) }); },
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not register HMO.'),
+      error: (err) => void err,
     });
   }
 }

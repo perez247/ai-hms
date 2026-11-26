@@ -108,6 +108,7 @@ builder.Services.AddScoped<JwtTokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IPatientService, PatientService>();
 builder.Services.AddScoped<IAppointmentService, AppointmentService>();
+builder.Services.AddScoped<IAppointmentPricingService, AppointmentPricingService>();
 builder.Services.AddScoped<IClinicalService, ClinicalService>();
 builder.Services.AddScoped<IPharmacyService, PharmacyService>();
 builder.Services.AddScoped<IBillingService, BillingService>();
@@ -124,6 +125,10 @@ builder.Services.AddSingleton<IFileStorage, LocalFileStorage>();
 builder.Services.AddScoped<IPatientProfileService, PatientProfileService>();
 builder.Services.AddScoped<IStaffProfileService, StaffProfileService>();
 builder.Services.AddScoped<INurseService, NurseService>();
+builder.Services.AddScoped<IFundingService, FundingService>();
+builder.Services.AddScoped<IStocksService, StocksService>();
+builder.Services.AddScoped<IResultsService, ResultsService>();
+builder.Services.AddScoped<IStockImportService, StockImportService>();
 builder.Services.AddHostedService<ExpiryWorker>();
 
 var app = builder.Build();

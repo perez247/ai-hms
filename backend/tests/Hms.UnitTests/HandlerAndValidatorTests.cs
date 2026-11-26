@@ -2,6 +2,7 @@ using Hms.Application.Common;
 using Hms.Application.DTOs;
 using Hms.Application.Features.Auth;
 using Hms.Application.Features.Billing;
+using Hms.Application.Features.Clinical;
 using Hms.Application.Features.Patients;
 using Hms.Application.Features.Pharmacy;
 using Hms.Application.Services;
@@ -17,7 +18,7 @@ public sealed class HandlerAndValidatorTests
     public async Task Create_patient_handler_dispatches_to_application_port()
     {
         var request = new CreatePatientRequest("Ada", null, "Okafor", Sex.Female, new DateOnly(1992, 5, 18),
-            "+234", "ada@example.test", null, null, null, []);
+            "+234", "ada@example.test", null, null, null, null, null, null, null, []);
         var expected = Patient();
         var service = new Mock<IPatientService>();
         service.Setup(x => x.CreateAsync(request, It.IsAny<CancellationToken>())).ReturnsAsync(expected);
@@ -62,7 +63,9 @@ public sealed class HandlerAndValidatorTests
         Assert.Equal(id, result.Id);
         Assert.Equal(StaffRole.Pharmacy, result.Role);
         Assert.Contains("pharmacy.commit", result.Permissions);
-        Assert.DoesNotContain("billing.approve", result.Permissions);
+        Assert.Contains("billing.approve", result.Permissions);
+        Assert.Contains("hmo.read", result.Permissions);
+        Assert.DoesNotContain("accountbook.read", result.Permissions);
     }
 
     [Fact]
@@ -70,7 +73,7 @@ public sealed class HandlerAndValidatorTests
     {
         var validator = new CreatePatientCommandValidator();
         var command = new CreatePatientCommand(new CreatePatientRequest("Ada", null, "Okafor", Sex.Female,
-            new DateOnly(1992, 5, 18), null, null, null, null, null,
+            new DateOnly(1992, 5, 18), null, null, null, null, null, null, null, null, null,
             [new CreateHmoEnrollmentRequest(Guid.NewGuid(), "HG-1", "Standard", DateOnly.FromDateTime(DateTime.UtcNow), null, true)]));
 
         var result = await validator.ValidateAsync(command);
@@ -83,7 +86,7 @@ public sealed class HandlerAndValidatorTests
     {
         var validator = new CreatePatientCommandValidator();
         var command = new CreatePatientCommand(new CreatePatientRequest("", null, "", Sex.Female,
-            DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)), null, "bad-email", null, null, null,
+            DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)), null, "bad-email", null, null, null, null, null, null, null,
             [
                 new CreateHmoEnrollmentRequest(Guid.NewGuid(), "", null, DateOnly.FromDateTime(DateTime.UtcNow), null, true),
                 new CreateHmoEnrollmentRequest(Guid.NewGuid(), "HG-2", null, DateOnly.FromDateTime(DateTime.UtcNow), null, true)
@@ -115,6 +118,103 @@ public sealed class HandlerAndValidatorTests
     }
 
     [Fact]
+    public async Task Create_patient_validator_rejects_overlong_demographic_fields()
+    {
+        var validator = new CreatePatientCommandValidator();
+        var command = new CreatePatientCommand(new CreatePatientRequest("Ada", null, "Okafor", Sex.Female,
+            new DateOnly(1992, 5, 18), null, null, null, new string('A', 101), "Lagos", "Penicillin, sulfa", "Nursing",
+            null, null,
+            [
+                new CreateHmoEnrollmentRequest(Guid.NewGuid(), "HG-1", "Standard", DateOnly.FromDateTime(DateTime.UtcNow), null, true)
+            ]));
+
+        var result = await validator.ValidateAsync(command);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.ErrorMessage.Contains("State Of Origin"));
+    }
+
+    [Fact]
+    public async Task Update_patient_validator_rejects_missing_names_and_overlong_fields()
+    {
+        var validator = new UpdatePatientCommandValidator();
+        var command = new UpdatePatientCommand(Guid.NewGuid(), new UpdatePatientRequest("", null, "", Sex.Female,
+            DateOnly.FromDateTime(DateTime.UtcNow.AddDays(1)), null, null, null, new string('A', 101), "Lagos",
+            "Penicillin", "Nursing", null, null));
+
+        var result = await validator.ValidateAsync(command);
+
+        Assert.False(result.IsValid);
+        Assert.Contains(result.Errors, e => e.PropertyName.EndsWith("FirstName"));
+        Assert.Contains(result.Errors, e => e.PropertyName.EndsWith("DateOfBirth"));
+        Assert.Contains(result.Errors, e => e.PropertyName.EndsWith("StateOfOrigin"));
+    }
+
+    [Fact]
+    public async Task Create_outpatient_encounter_validator_rejects_presenting_complaint_over_1000_chars()
+    {
+        var validator = new CreateOutpatientEncounterCommandValidator();
+        var command = new CreateOutpatientEncounterCommand(new CreateOutpatientEncounterRequest(
+            Guid.NewGuid(), Guid.NewGuid(), null, false, null, new string('F', 1001)));
+
+        var result = await validator.ValidateAsync(command);
+
+        Assert.False(result.IsValid);
+    }
+
+    [Fact]
+    public async Task Save_encounter_validator_rejects_over_20_examinations_and_incomplete_sign()
+    {
+        var validator = new SaveEncounterCommandValidator();
+        var tooMany = await validator.ValidateAsync(new SaveEncounterCommand(Guid.NewGuid(), new SaveEncounterRequest(
+            "Fever", null, null, null, "R50.9", "Discharge",
+            [.. Enumerable.Range(0, 21).Select(i => new ExaminationItemRequest($"System {i}", "Normal"))], true)));
+        var thirtyOk = await validator.ValidateAsync(new SaveEncounterCommand(Guid.NewGuid(), new SaveEncounterRequest(
+            "Fever", null, null, null, "R50.9", "Discharge",
+            [.. Enumerable.Range(0, 20).Select(i => new ExaminationItemRequest($"System {i}", "Normal"))], false)));
+        var incompleteSign = await validator.ValidateAsync(new SaveEncounterCommand(Guid.NewGuid(), new SaveEncounterRequest(
+            null, null, null, null, null, null, null, true)));
+
+        Assert.False(tooMany.IsValid);
+        Assert.True(thirtyOk.IsValid);
+        Assert.False(incompleteSign.IsValid);
+    }
+
+    [Fact]
+    public async Task Save_encounter_validator_requires_complete_plan_rows_even_for_drafts()
+    {
+        var validator = new SaveEncounterCommandValidator();
+        var testId = Guid.NewGuid();
+        var missingDose = await validator.ValidateAsync(new SaveEncounterCommand(Guid.NewGuid(), new SaveEncounterRequest(
+            "Fever", null, null, null, null, null, null, false,
+            Medications: [new PrescribeOrderRequest(Guid.NewGuid(), "", "Oral", "TDS", 5, 15)])));
+        var badRoute = await validator.ValidateAsync(new SaveEncounterCommand(Guid.NewGuid(), new SaveEncounterRequest(
+            "Fever", null, null, null, null, null, null, false,
+            Medications: [new PrescribeOrderRequest(Guid.NewGuid(), "500 mg", "Buccal", "TDS", 5, 15)])));
+        var zeroQuantity = await validator.ValidateAsync(new SaveEncounterCommand(Guid.NewGuid(), new SaveEncounterRequest(
+            "Fever", null, null, null, null, null, null, false,
+            Medications: [new PrescribeOrderRequest(Guid.NewGuid(), "500 mg", "Oral", "TDS", 5, 0)])));
+        var duplicateTests = await validator.ValidateAsync(new SaveEncounterCommand(Guid.NewGuid(), new SaveEncounterRequest(
+            "Fever", null, null, null, null, null, null, false,
+            Tests:
+            [
+                new ServiceOrderRequest(testId, "Routine", null),
+                new ServiceOrderRequest(testId, "Routine", null)
+            ])));
+        var complete = await validator.ValidateAsync(new SaveEncounterCommand(Guid.NewGuid(), new SaveEncounterRequest(
+            "Fever", null, null, null, null, null, null, false,
+            Medications: [new PrescribeOrderRequest(Guid.NewGuid(), "500 mg", "Oral", "TDS", 5, 15)],
+            Tests: [new ServiceOrderRequest(Guid.NewGuid(), "Routine", "Note")],
+            Procedures: [new ServiceOrderRequest(Guid.NewGuid(), "Urgent", null)])));
+
+        Assert.False(missingDose.IsValid);
+        Assert.False(badRoute.IsValid);
+        Assert.False(zeroQuantity.IsValid);
+        Assert.False(duplicateTests.IsValid);
+        Assert.True(complete.IsValid);
+    }
+
+    [Fact]
     public async Task Billing_validator_rejects_empty_id_and_non_positive_payment()
     {
         var approve = new ApproveBillCommandValidator();
@@ -134,12 +234,12 @@ public sealed class HandlerAndValidatorTests
         Assert.Contains(result.Errors, e => e.ErrorMessage.Contains("exactly one encounter"));
     }
 
-    private static PatientDto Patient() => new(Guid.NewGuid(), "PAT-1", "Ada Okafor", Sex.Female,
-        new DateOnly(1992, 5, 18), null, null, null, null, null, DateOnly.FromDateTime(DateTime.UtcNow),
-        DateOnly.FromDateTime(DateTime.UtcNow.AddYears(2)), PatientStatus.Active, []);
+    private static PatientDto Patient() => new(Guid.NewGuid(), "PAT-1", "Ada Okafor", "Ada", "Okafor", Sex.Female,
+        new DateOnly(1992, 5, 18), null, null, null, null, null, null, null, null, null,
+        DateOnly.FromDateTime(DateTime.UtcNow), DateOnly.FromDateTime(DateTime.UtcNow.AddYears(2)), PatientStatus.Active, []);
 
     private static BillDto Bill(Guid id) => new(id, "BILL-1", BillKind.OutpatientEncounter, BillStatus.Committed,
         Guid.NewGuid(), "PAT-1", "Ada Okafor", PayerType.SelfPay, null, null, null, null, "NGN", 100, 0, 0, 100, 0, 100,
         null, null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, null, null,
-        [], [], [], null);
+        [], [], [], null, false, null, null, null, null);
 }

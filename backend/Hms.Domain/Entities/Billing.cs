@@ -46,6 +46,15 @@ public class Bill : Entity
     public DateTimeOffset? FinanceApprovedAt { get; set; }
     public Guid? FinanceApprovedBy { get; set; }
     public DateTimeOffset? PaidAt { get; set; }
+    /// <summary>True once Finance moves the unpaid bill to the debt ledger.</summary>
+    public bool IsDebt { get; set; }
+    /// <summary>Patient for self-pay bills; the HMO company for HMO bills.</summary>
+    public DebtOwner? DebtOwner { get; set; }
+    public DateTimeOffset? DebtRecordedAt { get; set; }
+    public Guid? DebtRecordedBy { get; set; }
+    public string? DebtReason { get; set; }
+    /// <summary>Set when the outstanding balance reaches zero; the debt stays on record as settled.</summary>
+    public DateTimeOffset? DebtSettledAt { get; set; }
     public DateTimeOffset? VoidedAt { get; set; }
     public Guid? VoidedBy { get; set; }
     public string? VoidReason { get; set; }
@@ -185,6 +194,8 @@ public class AccountBookEntry : Entity
     public string EntryNumber { get; set; } = string.Empty;
     public AccountEntryType EntryType { get; set; }
     public string Category { get; set; } = string.Empty;
+    /// <summary>External source for manually recorded credits; null for payment/expense entries.</summary>
+    public string? Source { get; set; }
     public decimal Amount { get; set; }
     public string Currency { get; set; } = "NGN";
     public DateTimeOffset OccurredAt { get; set; } = DateTimeOffset.UtcNow;

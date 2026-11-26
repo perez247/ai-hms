@@ -13,7 +13,7 @@ interface TariffDraft { code: string; description: string; unitPrice: number | n
   selector: 'app-hmo-directory',
   imports: [RouterLink, FormsModule],
   template: `
-    <div class="mx-auto max-w-6xl">
+    <div class="mx-auto px-4">
       <p class="text-xs font-bold uppercase tracking-[0.2em] text-teal-700">HMO partners</p>
       <h1 class="mt-2 text-3xl font-black tracking-tight text-slate-950">HMO profiles</h1>
       <p class="mt-1 text-sm text-slate-500">Register HMOs, maintain negotiated medication tariffs and reach bulk-fitness settlement.</p>
@@ -85,7 +85,7 @@ export class HmoDirectoryComponent implements OnInit {
   load(): void {
     this.api.hmo.directory().subscribe({
       next: (entries) => this.hmos.set(entries),
-      error: (err) => this.toast.error(err?.error?.detail ?? 'Could not load HMO partners.'),
+      error: (err) => void err,
     });
   }
 
@@ -122,7 +122,7 @@ export class HmoDirectoryComponent implements OnInit {
         this.tariffRows.set([]);
         this.load();
       },
-      error: (err) => { this.saving.set(false); this.toast.error(err?.error?.detail ?? 'Could not register the HMO.'); },
+      error: (err) => { this.saving.set(false); void err; },
     });
   }
 }

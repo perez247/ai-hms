@@ -12,6 +12,7 @@ public interface IPatientService
     Task<PatientDto> GetByNumberAsync(string patientNumber, CancellationToken cancellationToken = default);
     Task<Guid> ResolveIdByNumberAsync(string patientNumber, CancellationToken cancellationToken = default);
     Task<PatientDto> CreateAsync(CreatePatientRequest request, CancellationToken cancellationToken = default);
+    Task<PatientDto> UpdateAsync(Guid patientId, UpdatePatientRequest request, CancellationToken cancellationToken = default);
     Task<RegistrationRenewalResult> RenewRegistrationAsync(Guid patientId, CancellationToken cancellationToken = default);
     Task<PatientHmoEnrollmentDto> AddHmoEnrollmentAsync(Guid patientId, AddHmoEnrollmentRequest request, CancellationToken cancellationToken = default);
     Task<PatientHmoEnrollmentDto> AddHmoEnrollmentByNumberAsync(string patientNumber, AddHmoEnrollmentRequest request, CancellationToken cancellationToken = default);

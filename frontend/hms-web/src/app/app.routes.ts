@@ -44,7 +44,7 @@ export const routes: Routes = [
       {
         path: 'finance',
         canActivate: [accessGuard],
-        data: { roles: ['Finance'], permissions: ['billing.read'] },
+        data: { roles: ['Finance', 'Pharmacy'], permissions: ['billing.read'] },
         loadChildren: () => import('./features/finance/finance.routes').then((m) => m.FINANCE_ROUTES),
       },
       {
@@ -52,6 +52,31 @@ export const routes: Routes = [
         canActivate: [accessGuard],
         data: { roles: ['HmoOffice'], permissions: ['hmo.read'] },
         loadChildren: () => import('./features/hmo/hmo.routes').then((m) => m.HMO_ROUTES),
+      },
+      {
+        path: 'lab',
+        canActivate: [accessGuard],
+        data: { roles: ['Lab', 'Pharmacy', 'Doctor', 'Admin'], permissions: ['lab.requests.read'] },
+        children: [
+          { path: '', pathMatch: 'full', redirectTo: 'tests' },
+          {
+            path: 'tests',
+            loadComponent: () => import('./features/results/result-queue.component').then((m) => m.ResultQueueComponent),
+            data: { roles: ['Lab', 'Pharmacy', 'Doctor', 'Admin'], permissions: ['lab.requests.read'], kind: 'Test' },
+          },
+        ],
+      },
+      {
+        path: 'procedures',
+        canActivate: [accessGuard],
+        data: { roles: ['Doctor', 'Pharmacy', 'Admin'], permissions: ['procedures.requests.read'], kind: 'Procedure' },
+        loadComponent: () => import('./features/results/result-queue.component').then((m) => m.ResultQueueComponent),
+      },
+      {
+        path: 'stocks',
+        canActivate: [accessGuard],
+        data: { roles: ['Pharmacy', 'Admin'], permissions: ['stock.read'] },
+        loadChildren: () => import('./features/stocks/stocks.routes').then((m) => m.STOCKS_ROUTES),
       },
       {
         path: 'hr',

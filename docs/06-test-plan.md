@@ -35,7 +35,8 @@
 **Authorization catalogue**
 
 - Admin has every permission.
-- Pharmacy cannot approve bills or payments.
+- Pharmacy can approve, negotiate and settle bills on the Bills page but cannot read or post to the account book.
+- Bills moved to debt leave the main bills view, appear in the debt view, and settle out once the balance is paid; HMO bills are owed by the HMO.
 - HMO Office cannot approve Finance or record payments.
 - Finance cannot dispense or issue HMO authorizations.
 - Representative permissions exist for every role.
@@ -90,7 +91,7 @@ For every role, test a representative forbidden and allowed endpoint. The minimu
 | Receptionist | create patient | approve bill |
 | Nurse | record vitals | dispense medication |
 | Doctor | create encounter | approve payment |
-| Pharmacy | commit outpatient bill | approve bill / issue PA |
+| Pharmacy | commit outpatient bill / approve, negotiate and settle bills | read or post to the account book |
 | Finance | approve bill / record payment | dispense / HMO approve |
 | HMO Office | issue PA / HMO approve | Finance approve / payment |
 | HR Office | create user / export | clinical endpoints |

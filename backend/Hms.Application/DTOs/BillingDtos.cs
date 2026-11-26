@@ -2,9 +2,12 @@ using Hms.Domain.Enums;
 
 namespace Hms.Application.DTOs;
 
+public sealed record AddBillLineRequest(Guid StockItemId, decimal Quantity, string? Description);
+
 public sealed record BillLineDto(
     Guid Id,
     BillLineCategory Category,
+    StockItemType? ItemType,
     string Description,
     decimal Quantity,
     decimal UnitPrice,
@@ -59,13 +62,21 @@ public sealed record BillDto(
     IReadOnlyList<BillLineDto> Lines,
     IReadOnlyList<PaymentDto> Payments,
     IReadOnlyList<BillAdjustmentDto> Adjustments,
-    HmoReceivableDto? Receivable);
+    HmoReceivableDto? Receivable,
+    bool IsDebt,
+    DebtOwner? DebtOwner,
+    DateTimeOffset? DebtRecordedAt,
+    string? DebtReason,
+    DateTimeOffset? DebtSettledAt);
 
+public sealed record MoveBillToDebtRequest(string? Reason);
 public sealed record ApproveBillRequest(string? Notes);
 public sealed record NegotiateBillRequest(decimal DiscountAmount, string Reason);
 public sealed record PaymentRequest(decimal Amount, PaymentMethod Method, string? Reference, string? IdempotencyKey, string? Notes);
 public sealed record AccountBookEntryRequest(AccountEntryType EntryType, string Category, decimal Amount, string Description, DateTimeOffset? OccurredAt, string? Reference);
-public sealed record AccountBookEntryDto(Guid Id, string EntryNumber, AccountEntryType EntryType, string Direction, string Category, decimal Amount, string Currency, DateTimeOffset OccurredAt, string Description, string? Reference, Guid? BillId, Guid? PaymentId);
+public sealed record AccountBookEntryDto(Guid Id, string EntryNumber, AccountEntryType EntryType, string Direction, string Category, decimal Amount, string Currency, DateTimeOffset OccurredAt, string Description, string? Reference, string? Source, Guid? BillId, Guid? PaymentId);
+public sealed record RecordCreditRequest(decimal Amount, string Source, DateTimeOffset? OccurredAt, string Description, string? Reference);
+public sealed record AccountBookSummaryDto(decimal TotalCredits, decimal TotalDebits, decimal Balance, string Currency);
 
 public sealed record CreateManualBillLineRequest(
     BillLineCategory Category,

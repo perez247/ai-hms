@@ -1,4 +1,3 @@
-using Hms.Domain.Billing;
 using Hms.Domain.Entities;
 using Hms.Domain.Enums;
 using Hms.Infrastructure.Identity;
@@ -10,8 +9,9 @@ using Microsoft.Extensions.Logging;
 namespace Hms.Infrastructure.Persistence;
 
 /// <summary>
-/// Idempotent development seed. It applies migrations, creates one account per role,
-/// configures fees/HMO/tariffs, and seeds one outpatient and one inpatient demo journey.
+/// Idempotent development seed. It applies migrations, creates one account per role and
+/// configures fees/HMO/tariffs plus the stock catalogue. It deliberately creates no patient,
+/// appointment, encounter or billing records; those are entered through the application.
 /// </summary>
 public static class DbSeeder
 {
@@ -25,7 +25,12 @@ public static class DbSeeder
         var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("DbSeeder");
 
         await db.Database.MigrateAsync(cancellationToken);
-        if (await db.Users.AnyAsync(cancellationToken)) return;
+        if (await db.Users.AnyAsync(cancellationToken))
+        {
+            // Existing installations still need the appointment reason catalogue.
+            await EnsureAppointmentReasonPricingAsync(db, logger, cancellationToken);
+            return;
+        }
 
         // Stop at the first user: this keeps restarts idempotent without touching demo data.
         logger.LogInformation("Seeding clinic database");
@@ -55,11 +60,7 @@ public static class DbSeeder
         }
 
         var adminId = users[StaffRole.Admin].Id;
-        var doctorId = users[StaffRole.Doctor].Id;
-        var nurseId = users[StaffRole.Nurse].Id;
-        var receptionId = users[StaffRole.Receptionist].Id;
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var now = DateTimeOffset.UtcNow;
 
         db.ClinicSettings.AddRange(
             new ClinicSetting { Key = "registration.validity_months", ValueJson = "24", Description = "Registration validity in months." },
@@ -125,129 +126,34 @@ public static class DbSeeder
         tariff.Items.Add(new HmoTariffItem { Code = "APPENDECTOMY", Description = "Appendectomy", Category = TariffCategory.Surgery, Unit = "procedure", UnitPrice = 250_000m, CoveragePercent = 90m });
         db.HmoTariffs.Add(tariff);
 
-        var paracetamol = new Medication { Code = "PARA500", Name = "Paracetamol", GenericName = "Paracetamol", Form = "Tablet", Strength = "500mg", Unit = "tablet", UnitPrice = 500m, TariffCode = "PARACETAMOL", StockOnHand = 1000m, ReorderLevel = 100m };
-        var amoxicillin = new Medication { Code = "AMOX500", Name = "Amoxicillin", GenericName = "Amoxicillin", Form = "Capsule", Strength = "500mg", Unit = "capsule", UnitPrice = 1_200m, TariffCode = "AMOXICILLIN", StockOnHand = 500m, ReorderLevel = 50m };
-        var artemether = new Medication { Code = "ART20", Name = "Artemether/Lumefantrine", Form = "Tablet", Strength = "20/120mg", Unit = "tablet", UnitPrice = 1_500m, TariffCode = "ARTEMETHER", StockOnHand = 300m, ReorderLevel = 40m };
-        db.Medications.AddRange(paracetamol, amoxicillin, artemether);
+        StockItem Medication(string code, string name, string? generic, string? form, string? strength, string unit, string tariff, decimal price, decimal stock) =>
+            new() { Code = code, Name = name, GenericName = generic, Form = form, Strength = strength, Unit = unit, TariffCode = tariff, ItemType = StockItemType.Medication, Quantity = stock };
+        var paracetamol = Medication("PARA500", "Paracetamol", "Paracetamol", "Tablet", "500mg", "tablet", "PARACETAMOL", 500m, 1000m);
+        var amoxicillin = Medication("AMOX500", "Amoxicillin", "Amoxicillin", "Capsule", "500mg", "capsule", "AMOXICILLIN", 1_200m, 500m);
+        var artemether = Medication("ART20", "Artemether/Lumefantrine", null, "Tablet", "20/120mg", "tablet", "ARTEMETHER", 1_500m, 300m);
+        var cbc = new StockItem { Code = "CBC", Name = "Complete blood count", Category = "Laboratory", TariffCode = "CBC", ItemType = StockItemType.Test };
+        var ultrasound = new StockItem { Code = "US", Name = "Ultrasound scan", Category = "Radiology", TariffCode = "ULTRASOUND", ItemType = StockItemType.Test };
+        var appendectomy = new StockItem { Code = "APPEND", Name = "Appendectomy", TariffCode = "APPENDECTOMY", ItemType = StockItemType.Procedure };
+        var consultation = new StockItem { Code = "CONSULT", Name = "Consultation", Category = "Appointment", Unit = "visit", ItemType = StockItemType.Service };
+        var emergency = new StockItem { Code = "EMERGENCY", Name = "Emergency", Category = "Appointment", Unit = "visit", ItemType = StockItemType.Service };
+        db.StockItems.AddRange(paracetamol, amoxicillin, artemether, cbc, ultrasound, appendectomy, consultation, emergency);
 
-        var cbc = new InvestigationCatalogItem { Code = "CBC", Name = "Complete blood count", Category = "Laboratory", Price = 5_000m, TariffCode = "CBC" };
-        var ultrasound = new InvestigationCatalogItem { Code = "US", Name = "Ultrasound scan", Category = "Radiology", Price = 15_000m, TariffCode = "ULTRASOUND" };
-        db.InvestigationCatalogItems.AddRange(cbc, ultrasound);
-        var appendectomy = new SurgeryCatalogItem { Code = "APPEND", Name = "Appendectomy", Price = 250_000m, TariffCode = "APPENDECTOMY" };
-        db.SurgeryCatalogItems.Add(appendectomy);
-
-        // Demo patients: Ada exercises HMO outpatient billing; Chinedu exercises inpatient discharge.
-        var ada = new Patient
+        // Private price rows plus one HMO price row per enrolled payer for every catalogue item.
+        var privatePrices = new[]
         {
-            PatientNumber = "PAT-DEMO-0001", FirstName = "Ada", LastName = "Okafor", Sex = Sex.Female,
-            DateOfBirth = new DateOnly(1992, 5, 18), Phone = "+234-801-000-0001", Email = "ada@example.test",
-            Address = "12 Palm Street, Lagos", NextOfKinName = "Ngozi Okafor", NextOfKinPhone = "+234-801-000-0002",
-            RegistrationDate = today, CurrentRegistrationExpiresAt = today.AddYears(2), Status = PatientStatus.Active, CreatedBy = receptionId
+            (paracetamol, 500m), (amoxicillin, 1_200m), (artemether, 1_500m),
+            (cbc, 5_000m), (ultrasound, 15_000m), (appendectomy, 250_000m),
+            (consultation, 5_000m), (emergency, 20_000m)
         };
-        var chinedu = new Patient
-        {
-            PatientNumber = "PAT-DEMO-0002", FirstName = "Chinedu", LastName = "Bello", Sex = Sex.Male,
-            DateOfBirth = new DateOnly(1984, 11, 2), Phone = "+234-802-000-0001", Address = "4 Market Road, Ibadan",
-            RegistrationDate = today, CurrentRegistrationExpiresAt = today.AddYears(2), Status = PatientStatus.Active, CreatedBy = receptionId
-        };
-        db.Patients.AddRange(ada, chinedu);
-        await db.SaveChangesAsync(cancellationToken);
-
-        db.PatientRegistrationPeriods.AddRange(
-            new PatientRegistrationPeriod { PatientId = ada.Id, PeriodStart = today, PeriodEnd = today.AddYears(2), FeeAmount = 10_000m, IsCurrent = true, ProcessedBy = receptionId },
-            new PatientRegistrationPeriod { PatientId = chinedu.Id, PeriodStart = today, PeriodEnd = today.AddYears(2), FeeAmount = 10_000m, IsCurrent = true, ProcessedBy = receptionId });
-
-        var enrollment = new PatientHmoEnrollment
-        {
-            PatientId = ada.Id, HmoCompanyId = hmo.Id, HmoMemberId = "HG-000123", PlanName = "Standard",
-            ValidFrom = today.AddMonths(-2), ValidTo = today.AddYears(1), IsPrimary = true, CreatedBy = receptionId
-        };
-        db.PatientHmoEnrollments.Add(enrollment);
-        await db.SaveChangesAsync(cancellationToken);
-
-        var appointment = new Appointment
-        {
-            AppointmentNumber = "APT-DEMO-0001", PatientId = ada.Id, DoctorId = doctorId,
-            ScheduledAt = now.AddMinutes(-30), DurationMinutes = 30, Reason = "Fever and headache",
-            Status = AppointmentStatus.CheckedIn, CheckedInAt = now.AddMinutes(-25), CreatedBy = receptionId
-        };
-        db.Appointments.Add(appointment);
-        await db.SaveChangesAsync(cancellationToken);
-
-        var admission = new Admission
-        {
-            AdmissionNumber = "ADM-DEMO-0001", PatientId = chinedu.Id, AttendingDoctorId = doctorId,
-            WardType = WardType.General, BedNumber = "G-04", AdmittedAt = now.AddDays(-2),
-            Status = AdmissionStatus.Active, CreatedBy = doctorId
-        };
-        db.Admissions.Add(admission);
-        await db.SaveChangesAsync(cancellationToken);
-
-        var outpatientEncounter = new Encounter
-        {
-            EncounterNumber = "ENC-DEMO-0001", PatientId = ada.Id, DoctorId = doctorId, AppointmentId = appointment.Id,
-            Type = EncounterType.Outpatient, HmoEnrollmentId = enrollment.Id, Status = EncounterStatus.Open,
-            ChiefComplaint = "Fever and headache", CreatedBy = doctorId
-        };
-        var inpatientEncounter = new Encounter
-        {
-            EncounterNumber = "ENC-DEMO-0002", PatientId = chinedu.Id, DoctorId = doctorId, AdmissionId = admission.Id,
-            Type = EncounterType.Inpatient, Status = EncounterStatus.Open, ChiefComplaint = "Abdominal pain", CreatedBy = doctorId
-        };
-        db.Encounters.AddRange(outpatientEncounter, inpatientEncounter);
-        await db.SaveChangesAsync(cancellationToken);
-
-        var appointmentBill = NewBill("BILL-DEMO-0001", ada.Id, BillKind.Appointment, appointment.Id, null, null, null, null,
-            PayerType.SelfPay, null, null, BillStatus.Committed, adminId, now);
-        appointmentBill.Lines.Add(NewLine(appointmentBill.Id, BillLineCategory.Appointment, "Appointment fee", 5_000m,
-            ChargeSourceType.Appointment, appointment.Id, $"appointment:{appointment.Id}", null, null, adminId));
-        BillingCalculator.Recalculate(appointmentBill);
-
-        var outpatientBill = NewBill("BILL-DEMO-0002", ada.Id, BillKind.OutpatientEncounter, null, outpatientEncounter.Id, null, null, null,
-            PayerType.Hmo, hmo.Id, null, BillStatus.Draft, doctorId, now);
-        outpatientBill.HmoEnrollmentId = enrollment.Id;
-
-        var inpatientBill = NewBill("BILL-DEMO-0003", chinedu.Id, BillKind.InpatientAdmission, null, null, admission.Id, null, null,
-            PayerType.SelfPay, null, null, BillStatus.Draft, doctorId, now);
-        inpatientBill.Lines.Add(NewLine(inpatientBill.Id, BillLineCategory.Consultation, "Inpatient consultation ENC-DEMO-0002",
-            15_000m, ChargeSourceType.Encounter, inpatientEncounter.Id, $"consultation:{inpatientEncounter.Id}", inpatientEncounter.Id, admission.Id, doctorId));
-        BillingCalculator.Recalculate(inpatientBill);
-
-        db.Bills.AddRange(appointmentBill, outpatientBill, inpatientBill);
-        db.BillStatusHistories.AddRange(
-            new BillStatusHistory { BillId = appointmentBill.Id, FromStatus = null, ToStatus = BillStatus.Committed, ActorId = adminId, Reason = "Seed" },
-            new BillStatusHistory { BillId = outpatientBill.Id, FromStatus = null, ToStatus = BillStatus.Draft, ActorId = doctorId, Reason = "Seed" },
-            new BillStatusHistory { BillId = inpatientBill.Id, FromStatus = null, ToStatus = BillStatus.Draft, ActorId = doctorId, Reason = "Seed" });
-
-        var prescription = new Prescription
-        {
-            EncounterId = outpatientEncounter.Id, DoctorId = doctorId, Status = PrescriptionStatus.SentToPharmacy,
-            SentToPharmacyAt = now, Notes = "Take after food", CreatedBy = doctorId
-        };
-        prescription.Items.Add(new PrescriptionItem { MedicationId = paracetamol.Id, Dose = "1 tablet", Route = "Oral", Frequency = "TDS", DurationDays = 3, QuantityPrescribed = 9m });
-        prescription.Items.Add(new PrescriptionItem { MedicationId = amoxicillin.Id, Dose = "1 capsule", Route = "Oral", Frequency = "BD", DurationDays = 5, QuantityPrescribed = 10m });
-        db.Prescriptions.Add(prescription);
-
-        var inpatientPrescription = new Prescription
-        {
-            EncounterId = inpatientEncounter.Id, DoctorId = doctorId, Status = PrescriptionStatus.SentToPharmacy,
-            SentToPharmacyAt = now, CreatedBy = doctorId
-        };
-        inpatientPrescription.Items.Add(new PrescriptionItem { MedicationId = artemether.Id, Dose = "2 tablets", Route = "Oral", Frequency = "BD", DurationDays = 3, QuantityPrescribed = 12m });
-        db.Prescriptions.Add(inpatientPrescription);
-
-        db.Vitals.Add(new Vital
-        {
-            PatientId = ada.Id, EncounterId = outpatientEncounter.Id, NurseId = nurseId, TemperatureC = 38.2m, Systolic = 118, Diastolic = 78,
-            Pulse = 92, RespiratoryRate = 18, Spo2 = 98, WeightKg = 68m, HeightCm = 165m, PainScore = 4,
-            Notes = "Febrile, alert", CreatedBy = nurseId
-        });
-        db.Vitals.Add(new Vital
-        {
-            PatientId = chinedu.Id, EncounterId = inpatientEncounter.Id, NurseId = nurseId, TemperatureC = 37.4m, Systolic = 126, Diastolic = 82,
-            Pulse = 84, RespiratoryRate = 16, Spo2 = 99, WeightKg = 82m, HeightCm = 178m, PainScore = 6,
-            Notes = "Abdominal tenderness", CreatedBy = nurseId
-        });
+        foreach (var (item, price) in privatePrices)
+            db.ItemPrices.Add(new ItemPrice { StockItemId = item.Id, PayerId = Payers.PrivateId, FundingSource = FundingSource.Private, UnitPrice = price, CoveragePercent = 0, EffectiveFrom = today });
+        foreach (var item in privatePrices.Select(x => x.Item1))
+            db.ItemPrices.Add(new ItemPrice
+            {
+                StockItemId = item.Id, PayerId = hmo.Id, FundingSource = FundingSource.Hmo, HmoCompanyId = hmo.Id,
+                UnitPrice = privatePrices.Single(x => x.Item1 == item).Item2 * 0.9m,
+                CoveragePercent = 90, EffectiveFrom = today
+            });
 
         await db.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Seed complete. Users: {Email} / {Password}", "admin@clinic.local", DefaultPassword);
@@ -258,28 +164,64 @@ public static class DbSeeder
         Code = code, Amount = amount, Currency = "NGN", EffectiveFrom = effectiveFrom, CreatedBy = adminId
     };
 
-    private static Bill NewBill(string number, Guid patientId, BillKind kind, Guid? appointmentId, Guid? encounterId,
-        Guid? admissionId, Guid? registrationPeriodId, Guid? fitnessCertificateId, PayerType payerType,
-        Guid? hmoCompanyId, Guid? priorAuthorizationId, BillStatus status, Guid actorId, DateTimeOffset createdAt) => new()
+    /// <summary>
+    /// Idempotently adds Consultation/Emergency catalogue items and a price row for Private plus
+    /// every active HMO. This keeps existing databases usable after the appointment pricing change.
+    /// </summary>
+    private static async Task EnsureAppointmentReasonPricingAsync(HmsDbContext db, ILogger logger,
+        CancellationToken cancellationToken)
     {
-        BillNumber = number, PatientId = patientId, Kind = kind, AppointmentId = appointmentId, EncounterId = encounterId,
-        AdmissionId = admissionId, RegistrationPeriodId = registrationPeriodId, FitnessCertificateId = fitnessCertificateId,
-        PayerType = payerType, HmoCompanyId = hmoCompanyId, PriorAuthorizationId = priorAuthorizationId,
-        Status = status, CommittedAt = status == BillStatus.Draft ? null : createdAt, CommittedBy = status == BillStatus.Draft ? null : actorId,
-        CreatedBy = actorId, CreatedAt = createdAt
-    };
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var hmoIds = await db.HmoCompanies.AsNoTracking().Where(x => x.IsActive)
+            .Select(x => x.Id).ToListAsync(cancellationToken);
+        var created = false;
 
-    private static BillLine NewLine(Guid billId, BillLineCategory category, string description, decimal unitPrice,
-        ChargeSourceType sourceType, Guid sourceId, string sourceKey, Guid? encounterId, Guid? admissionId, Guid actorId)
-    {
-        var line = new BillLine
+        foreach (var (code, name, privatePrice) in new[]
+                 {
+                     ("CONSULT", AppointmentReasons.Consultation, 5_000m),
+                     ("EMERGENCY", AppointmentReasons.Emergency, 20_000m)
+                 })
         {
-            BillId = billId, Category = category, Description = description, Quantity = 1m, UnitPrice = unitPrice,
-            SourceType = sourceType, SourceId = sourceId, SourceKey = sourceKey, EncounterId = encounterId,
-            AdmissionId = admissionId, CreatedBy = actorId
-        };
-        BillingCalculator.SetLineAmounts(line, 0m, false);
-        return line;
+            var item = await db.StockItems.FirstOrDefaultAsync(x => x.Code == code, cancellationToken);
+            if (item is null)
+            {
+                item = new StockItem
+                {
+                    Code = code, Name = name, Category = "Appointment", Unit = "visit",
+                    ItemType = StockItemType.Service
+                };
+                db.StockItems.Add(item);
+                created = true;
+            }
+
+            if (!await db.ItemPrices.AnyAsync(x => x.StockItemId == item.Id && x.PayerId == Payers.PrivateId,
+                    cancellationToken))
+            {
+                db.ItemPrices.Add(new ItemPrice
+                {
+                    StockItemId = item.Id, PayerId = Payers.PrivateId, FundingSource = FundingSource.Private,
+                    UnitPrice = privatePrice, CoveragePercent = 0, EffectiveFrom = today
+                });
+                created = true;
+            }
+
+            foreach (var hmoId in hmoIds)
+            {
+                if (await db.ItemPrices.AnyAsync(x => x.StockItemId == item.Id && x.PayerId == hmoId,
+                        cancellationToken)) continue;
+                db.ItemPrices.Add(new ItemPrice
+                {
+                    StockItemId = item.Id, PayerId = hmoId, FundingSource = FundingSource.Hmo,
+                    HmoCompanyId = hmoId, UnitPrice = Math.Round(privatePrice * 0.9m, 2),
+                    CoveragePercent = 90, EffectiveFrom = today
+                });
+                created = true;
+            }
+        }
+
+        if (!created) return;
+        await db.SaveChangesAsync(cancellationToken);
+        logger.LogInformation("Ensured appointment reason catalogue pricing");
     }
 
     private static string ToEmailPrefix(StaffRole role) => role switch

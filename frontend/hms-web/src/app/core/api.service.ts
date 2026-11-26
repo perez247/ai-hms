@@ -2,11 +2,11 @@ import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { API_BASE } from './api.config';
 import {
-  AccountBookEntry, Bill, CreatePatientRequest, DispenseResult, DoctorOption, Encounter, Fee,
-  FitnessCertificate, HmoDirectoryEntry, HmoEnrollmentOption, HmoOption, HmoTariff, ManualBillResult,
-  DoctorQueue, NurseAppointment, NurseEncounter, NurseInpatient, PagedResult, Patient, PatientBasicProfile, PatientEncounterSummary, PatientFile, PatientFinance, PatientHmoEnrollment, PatientInvestigation, PatientProfile, PatientSurgery, PrescriptionPriceOptions, ShiftHandover,
+  AccountBookEntry, AccountBookSummary, AppointmentPriceQuote, Bill, CreatePatientRequest, DispenseResult, DoctorOption, Encounter, Fee, FitnessCertificate, HmoDirectoryEntry, HmoEnrollmentOption, HmoOption, HmoTariff, ManualBillResult,
+  DoctorQueue, EncounterListItem, NurseAppointment, NurseEncounter, NurseInpatient, PagedResult, Patient, PatientBasicProfile, PatientEncounterSummary, PatientFile, PatientFinance, PatientHmoEnrollment, PatientInvestigation, PatientProfile, PatientSurgery, PrescriptionPriceOptions, ReferenceOption, SaveEncounterRequest, ShiftHandover, UpdatePatientRequest,
   PatientSearchItem, PatientVitalsPage, PharmacyPrescription, PriorAuthorization, StaffProfile, UserRecord,
-  PatientDetails,
+  PatientDetails, StockItem, ServiceRequestDto, SaveServiceResultRequest, SubmitServiceResultRequest, PayerOption, ImportResult, OngoingAppointment,
+  ServiceRequestSummary, PatientMedication,
 } from './models';
 
 type Query = Record<string, string | number | boolean | null | undefined>;
@@ -35,6 +35,12 @@ export class ApiService {
     return this.http.delete<T>(`${API_BASE}${path}`);
   }
 
+  upload<T>(path: string, file: File) {
+    const form = new FormData();
+    form.append('file', file);
+    return this.http.post<T>(`${API_BASE}${path}`, form);
+  }
+
   download(path: string, query?: Query, fallbackName = 'export.csv') {
     this.http.get(`${API_BASE}${path}`, { params: this.params(query), responseType: 'blob' }).subscribe((blob) => {
       const url = URL.createObjectURL(blob);
@@ -52,6 +58,7 @@ export class ApiService {
     get: (id: string) => this.get<Patient>(`/patients/${id}`),
     getByNumber: (patientNumber: string) => this.get<PatientDetails>(`/patients/number/${encodeURIComponent(patientNumber)}`),
     create: (body: CreatePatientRequest) => this.post<Patient>('/patients', body),
+    update: (id: string, body: UpdatePatientRequest) => this.put<Patient>(`/patients/${id}`, body),
     renew: (id: string) => this.post<{ patientId: string; periodEnd: string; billId: string; feeAmount: number }>(`/patients/${id}/renew`, {}),
     addEnrollment: (id: string, body: unknown) => this.post<unknown>(`/patients/${id}/hmo-enrollments`, body),
     basicByNumber: (patientNumber: string) =>
@@ -62,6 +69,8 @@ export class ApiService {
       this.get<PatientEncounterSummary[]>(`/patients/number/${encodeURIComponent(patientNumber)}/encounters`),
     hmosByNumber: (patientNumber: string) =>
       this.get<PatientHmoEnrollment[]>(`/patients/number/${encodeURIComponent(patientNumber)}/hmo-enrollments`),
+    medicationsByNumber: (patientNumber: string) =>
+      this.get<PatientMedication[]>(`/patients/number/${encodeURIComponent(patientNumber)}/medications`),
     fitnessByNumber: (patientNumber: string) =>
       this.get<FitnessCertificate[]>(`/patients/number/${encodeURIComponent(patientNumber)}/fitness`),
     investigationsByNumber: (patientNumber: string) =>
@@ -85,15 +94,59 @@ export class ApiService {
       this.put<unknown>(`/patients/number/${encodeURIComponent(patientNumber)}/hmo-enrollments/${enrollmentId}`, body),
   };
 
+  stocks = {
+    payers: () => this.get<PayerOption[]>('/stocks/payers'),
+    list: (type?: string | null, search?: string | null, payerId?: string | null, includeInactive = true) =>
+      this.get<StockItem[]>('/stocks', { type, search, payerId, includeInactive }),
+    get: (id: string) => this.get<StockItem>(`/stocks/${id}`),
+    create: (body: unknown) => this.post<StockItem>('/stocks', body),
+    update: (id: string, body: unknown) => this.put<StockItem>(`/stocks/${id}`, body),
+    setPrice: (id: string, body: unknown) => this.post<StockItem>(`/stocks/${id}/prices`, body),
+    adjust: (id: string, body: unknown) => this.post<StockItem>(`/stocks/${id}/adjust`, body),
+    templateUrl: (kind: 'items' | 'prices', format: 'csv' | 'xlsx') =>
+      `${API_BASE}/stocks/template?kind=${kind}&format=${format}`,
+    importItems: (file: File) => this.upload<ImportResult>('/stocks/import/items', file),
+    importPrices: (file: File) => this.upload<ImportResult>('/stocks/import/prices', file),
+  };
+
+  results = {
+    tests: (status?: string | null, search?: string | null) => this.get<ServiceRequestDto[]>('/results/tests', { status, search }),
+    procedures: (status?: string | null, search?: string | null) => this.get<ServiceRequestDto[]>('/results/procedures', { status, search }),
+    get: (id: string) => this.get<ServiceRequestDto>(`/results/${id}`),
+    save: (id: string, body: SaveServiceResultRequest) => this.put<ServiceRequestDto>(`/results/${id}`, body),
+    submit: (id: string, body: SubmitServiceResultRequest) => this.post<ServiceRequestDto>(`/results/${id}/submit`, body),
+  };
+
   reference = {
-    hmos: () => this.get<HmoOption[]>('/reference/hmos'),
-    doctors: () => this.get<DoctorOption[]>('/reference/doctors'),
+    hmos: () => this.get<HmoOption[]>('/reference/hmos'),    doctors: () => this.get<DoctorOption[]>('/reference/doctors'),
     enrollments: (patientId: string) => this.get<HmoEnrollmentOption[]>(`/reference/patients/${patientId}/hmo-enrollments`),
+    medications: () => this.get<ReferenceOption[]>('/reference/medications'),
+    investigations: () => this.get<ReferenceOption[]>('/reference/investigations'),
+    procedures: () => this.get<ReferenceOption[]>('/reference/procedures'),
+    stockItems: (type?: string | null, payerId?: string | null, search?: string | null) =>
+      this.get<StockItem[]>('/reference/stock-items', { type, payerId, search }),
+  };
+
+  appointments = {
+    search: (date?: string | null, doctorId?: string | null, page = 1, pageSize = 50) =>
+      this.get<PagedResult<unknown>>('/appointments', { date, doctorId, page, pageSize }),
+    ongoing: (patientNumber: string) =>
+      this.get<OngoingAppointment | null>('/appointments/ongoing', { patientNumber }),
+    quote: (reason: string | null, fundingSource: string, hmoEnrollmentId: string | null) =>
+      this.get<AppointmentPriceQuote>('/appointments/quote', { reason, fundingSource, hmoEnrollmentId }),
+    create: (body: unknown) => this.post<unknown>('/appointments', body),
+    checkIn: (id: string) => this.post<unknown>(`/appointments/${id}/check-in`, {}),
   };
 
   clinical = {
     doctorQueue: () => this.get<DoctorQueue>('/clinical/doctor-queue'),
+    encounters: (type?: string | null, status?: string | null, date?: string | null, search?: string | null) =>
+      this.get<EncounterListItem[]>('/clinical/encounters', { type, status, date, search }),
     encounter: (id: string) => this.get<Encounter>(`/clinical/encounters/${id}`),
+    encounterResults: (id: string, page = 1, pageSize = 10) =>
+      this.get<PagedResult<ServiceRequestSummary>>(`/clinical/encounters/${id}/results`, { page, pageSize }),
+    saveEncounter: (id: string, body: SaveEncounterRequest) =>
+      this.put<Encounter>(`/clinical/encounters/${id}/clerking`, body),
     admission: (id: string) => this.get<unknown>(`/clinical/admissions/${id}`),
     vitals: (body: unknown) => this.post<unknown>('/clinical/vitals', body),
     createOutpatient: (body: unknown) => this.post<Encounter>('/clinical/encounters/outpatient', body),
@@ -110,22 +163,30 @@ export class ApiService {
     priceOptions: (encounterId: string) => this.get<PrescriptionPriceOptions>(`/pharmacy/encounters/${encounterId}/price-options`),
     dispense: (body: unknown) => this.post<DispenseResult>('/pharmacy/dispenses', body),
     confirmTariff: (billId: string, lineIds: string[]) => this.post<void>(`/pharmacy/bills/${billId}/confirm-tariff`, { billLineIds: lineIds }),
+    adjustQuantity: (prescriptionId: string, itemId: string, quantityPrescribed: number) =>
+      this.put<PharmacyPrescription>(`/pharmacy/prescriptions/${prescriptionId}/items/${itemId}/quantity`, { quantityPrescribed }),
   };
 
   billing = {
     create: (body: unknown) => this.post<ManualBillResult>('/billing/bills', body),
-    search: (status?: string, patientId?: string, page = 1, pageSize = 25) =>
-      this.get<PagedResult<Bill>>('/billing/bills', { status, patientId, page, pageSize }),
+    search: (status?: string, patientId?: string, page = 1, pageSize = 25, inDebt: boolean | null = null) =>
+      this.get<PagedResult<Bill>>('/billing/bills', { status, patientId, page, pageSize, inDebt }),
     get: (id: string) => this.get<Bill>(`/billing/bills/${id}`),
+    addLine: (id: string, body: unknown) => this.post<Bill>(`/billing/bills/${id}/lines`, body),
+    removeLine: (id: string, lineId: string) => this.delete<Bill>(`/billing/bills/${id}/lines/${lineId}`),
     routeHmo: (id: string) => this.post<Bill>(`/billing/bills/${id}/route-hmo`, {}),
     negotiate: (id: string, discountAmount: number, reason: string) =>
       this.post<Bill>(`/billing/bills/${id}/negotiate`, { discountAmount, reason }),
+    moveToDebt: (id: string, reason: string | null) => this.post<Bill>(`/billing/bills/${id}/debt`, { reason }),
     pay: (id: string, body: unknown) => this.post<Bill>(`/billing/bills/${id}/payments`, body),
     approve: (id: string, notes: string | null) => this.post<Bill>(`/billing/bills/${id}/approve`, { notes }),
     accountBook: (from: string | null, to: string | null, type: string | null, page = 1) =>
       this.get<PagedResult<AccountBookEntry>>('/billing/account-book', { from, to, type, page, pageSize: 50 }),
+    accountBookSummary: (from: string | null = null, to: string | null = null) =>
+      this.get<AccountBookSummary>('/billing/account-book/summary', { from, to }),
     addExpense: (body: unknown) => this.post<AccountBookEntry>('/billing/account-book/expenses', body),
     recordPurchase: (body: unknown) => this.post<AccountBookEntry>('/billing/account-book/purchases', body),
+    recordCredit: (body: unknown) => this.post<AccountBookEntry>('/billing/account-book/credits', body),
   };
 
   hmo = {

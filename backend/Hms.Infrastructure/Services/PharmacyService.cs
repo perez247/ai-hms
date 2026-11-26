@@ -31,11 +31,11 @@ public sealed class PharmacyService(
 
     public async Task<PharmacyPrescriptionDto> GetPrescriptionAsync(Guid encounterId, CancellationToken cancellationToken = default)
     {
-        var encounter = await db.Encounters.AsNoTracking().Include(x => x.Patient)
+        var encounter = await db.Encounters.AsNoTracking().Include(x => x.Patient).Include(x => x.Admission)
             .SingleOrDefaultAsync(x => x.Id == encounterId, cancellationToken)
             ?? throw new AppNotFoundException("Encounter not found.");
         var prescription = await db.Prescriptions.AsNoTracking()
-            .Include(x => x.Items).ThenInclude(x => x.Medication)
+            .Include(x => x.Items).ThenInclude(x => x.StockItem)
             .Where(x => x.EncounterId == encounterId && x.Status != PrescriptionStatus.Cancelled)
             .OrderByDescending(x => x.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken)
@@ -52,21 +52,25 @@ public sealed class PharmacyService(
         var tariff = hmoCompanyId is null
             ? new Dictionary<string, HmoTariffItem>()
             : await tariffs.ResolveAsync(hmoCompanyId.Value, cancellationToken);
+        var prices = await PrivatePricesAsync(
+            prescription.Items.Select(x => x.StockItemId).Distinct().ToList(), cancellationToken);
 
         var items = prescription.Items.Select(item =>
         {
             tariff.TryGetValue(item.Medication?.TariffCode ?? string.Empty, out var tariffItem);
             return new PharmacyPrescriptionItemDto(
                 item.Id, item.MedicationId, item.Medication?.Name ?? "Medication", item.Medication?.Strength,
-                item.Medication?.Form, item.Medication?.Unit ?? "unit", item.Medication?.StockOnHand ?? 0m,
-                item.QuantityPrescribed, item.QuantityDispensed, item.Medication?.UnitPrice ?? 0m,
+                item.Medication?.Form, item.Medication?.Unit ?? "unit", item.Medication?.Quantity ?? 0m,
+                item.QuantityPrescribed, item.QuantityDispensed, prices.GetValueOrDefault(item.StockItemId),
                 item.Medication?.TariffCode, tariffItem?.UnitPrice, tariffItem?.CoveragePercent,
                 encounter.Type == EncounterType.Inpatient);
         }).ToList();
 
         return new PharmacyPrescriptionDto(prescription.Id, encounter.Id, encounter.EncounterNumber,
             encounter.Patient?.FullName ?? "Unknown", encounter.Type == EncounterType.Inpatient,
-            prescription.Status.ToString(), prescription.Notes, items);
+            prescription.Status.ToString(), prescription.Notes, items,
+            FinanceCommitBlockedReason(encounter) is null,
+            FinanceCommitBlockedReason(encounter));
     }
 
     /// <summary>
@@ -79,12 +83,14 @@ public sealed class PharmacyService(
             .SingleOrDefaultAsync(x => x.Id == encounterId, cancellationToken)
             ?? throw new AppNotFoundException("Encounter not found.");
         var items = await db.Prescriptions.AsNoTracking()
-            .Include(x => x.Items).ThenInclude(x => x.Medication)
+            .Include(x => x.Items).ThenInclude(x => x.StockItem)
             .Where(x => x.EncounterId == encounterId && x.Status != PrescriptionStatus.Cancelled)
             .SelectMany(x => x.Items)
             .ToListAsync(cancellationToken);
 
-        var marketTotal = items.Sum(x => x.QuantityPrescribed * (x.Medication?.UnitPrice ?? 0m));
+        var prices = await PrivatePricesAsync(
+            items.Select(x => x.StockItemId).Distinct().ToList(), cancellationToken);
+        var marketTotal = items.Sum(x => x.QuantityPrescribed * prices.GetValueOrDefault(x.StockItemId));
         var options = new List<MedicationPriceOptionDto>
         {
             new("Private", null, "Private (market price)", marketTotal, 0m, marketTotal, false, [])
@@ -107,7 +113,7 @@ public sealed class PharmacyService(
                 var medication = item.Medication;
                 if (medication is null) continue;
                 priceBook.TryGetValue(medication.TariffCode ?? string.Empty, out var tariffItem);
-                var marketPrice = medication.UnitPrice;
+                var marketPrice = prices.GetValueOrDefault(item.StockItemId);
                 var unitPrice = tariffItem?.UnitPrice ?? marketPrice;
                 var amount = Math.Round(item.QuantityPrescribed * unitPrice, 2, MidpointRounding.AwayFromZero);
                 total += amount;
@@ -139,14 +145,22 @@ public sealed class PharmacyService(
             throw new AppConflictException("Duplicate prescription items are not allowed.");
 
         var prescription = await db.Prescriptions
-            .Include(x => x.Items).ThenInclude(x => x.Medication)
+            .Include(x => x.Items).ThenInclude(x => x.StockItem)
             .Include(x => x.Encounter).ThenInclude(x => x!.Patient)
+            .Include(x => x.Encounter).ThenInclude(x => x!.Admission)
             .SingleOrDefaultAsync(x => x.Id == request.PrescriptionId, cancellationToken)
             ?? throw new AppNotFoundException("Prescription not found.");
         if (prescription.Status is PrescriptionStatus.Cancelled or PrescriptionStatus.Dispensed)
             throw new AppConflictException("This prescription cannot be dispensed.");
         var encounter = prescription.Encounter!;
         var isInpatient = encounter.Type == EncounterType.Inpatient;
+
+        // Outpatient prescriptions may only be committed after the doctor has signed the encounter.
+        // Inpatient ward dispensing is still allowed while admitted; those charges accrue on the
+        // admission bill and are only committed to Finance at discharge.
+        if (!isInpatient && FinanceCommitBlockedReason(encounter) is { } blocked)
+            throw new AppConflictException(blocked);
+
         var warnings = new List<string>();
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
@@ -160,15 +174,15 @@ public sealed class PharmacyService(
             CreatedBy = user.RequireId()
         };
 
-        Bill? bill = isInpatient
-            ? await billing.GetOrCreateAdmissionBillAsync(await db.Admissions.SingleAsync(x => x.Id == encounter.AdmissionId, cancellationToken), cancellationToken)
-            : await billing.GetOrCreateEncounterBillAsync(encounter, cancellationToken);
+        var bill = await billing.GetOrCreateVisitBillAsync(encounter, cancellationToken);
 
         Guid? hmoCompanyId = null;
         if (encounter.HmoEnrollmentId is not null)
             hmoCompanyId = await db.PatientHmoEnrollments.AsNoTracking().Where(x => x.Id == encounter.HmoEnrollmentId)
                 .Select(x => (Guid?)x.HmoCompanyId).FirstOrDefaultAsync(cancellationToken);
         var tariff = hmoCompanyId is null ? new Dictionary<string, HmoTariffItem>() : await tariffs.ResolveAsync(hmoCompanyId.Value, cancellationToken);
+        var medIds = prescription.Items.Select(x => x.StockItemId).Distinct().ToList();
+        var privatePrices = await PrivatePricesAsync(medIds, cancellationToken);
         var allTariffsResolved = true;
 
         foreach (var requestItem in request.Items)
@@ -180,8 +194,9 @@ public sealed class PharmacyService(
             if (requestItem.Quantity > remaining)
                 throw new AppConflictException($"Quantity for {item.Medication?.Name} exceeds the remaining prescription.");
             var medication = item.Medication ?? throw new AppConflictException("Medication not found.");
-            if (medication.StockOnHand < requestItem.Quantity)
-                throw new AppConflictException($"Insufficient stock for {medication.Name}. Available: {medication.StockOnHand} {medication.Unit}.");
+            var available = medication.Quantity;
+            if (available < requestItem.Quantity)
+                throw new AppConflictException($"Insufficient stock for {medication.Name}. Available: {available} {medication.Unit}.");
 
             HmoTariffItem? tariffItem = null;
             if (hmoCompanyId is not null && !string.IsNullOrWhiteSpace(medication.TariffCode))
@@ -194,12 +209,12 @@ public sealed class PharmacyService(
                 PrescriptionItemId = item.Id,
                 MedicationId = medication.Id,
                 Quantity = requestItem.Quantity,
-                UnitPrice = tariffItem?.UnitPrice ?? medication.UnitPrice,
+                UnitPrice = tariffItem?.UnitPrice ?? privatePrices.GetValueOrDefault(medication.Id),
                 TariffItemId = tariffItem?.Id
             };
             dispense.Items.Add(dispenseItem);
             item.QuantityDispensed += requestItem.Quantity;
-            medication.StockOnHand -= requestItem.Quantity;
+            medication.Quantity -= requestItem.Quantity;
             medication.UpdatedAt = DateTimeOffset.UtcNow;
             db.StockMovements.Add(new StockMovement
             {
@@ -252,8 +267,30 @@ public sealed class PharmacyService(
         await audit.WriteAsync("medication.dispensed", nameof(Dispense), dispense.Id.ToString(), encounter.PatientId, encounter.Id, bill.Id,
             after: new { PrescriptionStatus = prescription.Status, Items = request.Items.Count, BillStatus = bill.Status }, cancellationToken: cancellationToken);
 
-        return new DispenseResultDto(dispense.Id, bill.Id, bill.Status.ToString(), !isInpatient,
+        return new DispenseResultDto(dispense.Id, bill.Id, bill.Status.ToString(),
+            bill.Status is not (BillStatus.Draft or BillStatus.Void),
             bill.PatientPayableTotal, bill.HmoPayableTotal, warnings);
+    }
+
+    /// <summary>
+    /// Finance commit eligibility. Outpatient encounters must be signed first; inpatient charges
+    /// stay on the draft admission bill until the patient is discharged.
+    /// </summary>
+    private static string? FinanceCommitBlockedReason(Encounter encounter)
+    {
+        if (encounter.Type == EncounterType.Outpatient)
+        {
+            if (encounter.Status == EncounterStatus.Completed) return null;
+            return encounter.Status == EncounterStatus.Cancelled
+                ? "Encounter was cancelled and cannot be committed to Finance."
+                : "Encounter is still in draft. The doctor must sign the encounter before it can be committed to Finance.";
+        }
+
+        var admission = encounter.Admission;
+        if (admission is null || admission.Status != AdmissionStatus.Discharged)
+            return "Patient has not yet been discharged. The admission bill can only be committed to Finance after discharge.";
+
+        return null;
     }
 
     public async Task ConfirmTariffAsync(Guid billId, ConfirmTariffRequest request, CancellationToken cancellationToken = default)
@@ -270,5 +307,38 @@ public sealed class PharmacyService(
         }
         await db.SaveChangesAsync(cancellationToken);
         await audit.WriteAsync("bill.tariff-confirmed", nameof(Bill), bill.Id.ToString(), bill.PatientId, bill.EncounterId, bill.Id, cancellationToken: cancellationToken);
+    }
+
+    public async Task<PharmacyPrescriptionDto> AdjustPrescriptionQuantityAsync(Guid prescriptionId, Guid itemId,
+        decimal quantityPrescribed, CancellationToken cancellationToken = default)
+    {
+        if (quantityPrescribed <= 0) throw new AppConflictException("Prescribed quantity must be greater than zero.");
+        var prescription = await db.Prescriptions.Include(x => x.Items).Include(x => x.Encounter)
+            .SingleOrDefaultAsync(x => x.Id == prescriptionId, cancellationToken)
+            ?? throw new AppNotFoundException("Prescription not found.");
+        if (prescription.Status == PrescriptionStatus.Cancelled)
+            throw new AppConflictException("A cancelled prescription cannot be adjusted.");
+        var item = prescription.Items.SingleOrDefault(x => x.Id == itemId)
+            ?? throw new AppNotFoundException("Prescription item not found.");
+        if (quantityPrescribed < item.QuantityDispensed)
+            throw new AppConflictException("Prescribed quantity cannot be less than the quantity already dispensed.");
+        item.QuantityPrescribed = quantityPrescribed;
+        prescription.Status = item.QuantityDispensed >= quantityPrescribed
+            ? PrescriptionStatus.Dispensed
+            : item.QuantityDispensed > 0 ? PrescriptionStatus.PartiallyDispensed : PrescriptionStatus.SentToPharmacy;
+        await db.SaveChangesAsync(cancellationToken);
+        await audit.WriteAsync("prescription.quantity-adjusted", nameof(PrescriptionItem), item.Id.ToString(),
+            prescription.Encounter.PatientId, prescription.EncounterId,
+            after: new { item.QuantityPrescribed, item.QuantityDispensed }, cancellationToken: cancellationToken);
+        return await GetPrescriptionAsync(prescription.EncounterId, cancellationToken);
+    }
+
+    private async Task<Dictionary<Guid, decimal>> PrivatePricesAsync(
+        IReadOnlyCollection<Guid> itemIds, CancellationToken cancellationToken)
+    {
+        if (itemIds.Count == 0) return [];
+        return await db.ItemPrices.AsNoTracking()
+            .Where(x => x.FundingSource == FundingSource.Private && x.IsActive && itemIds.Contains(x.StockItemId))
+            .ToDictionaryAsync(x => x.StockItemId, x => x.UnitPrice, cancellationToken);
     }
 }

@@ -44,6 +44,12 @@ public sealed partial class BillingService
         });
     }
 
+    private static void SettleDebtIfCleared(Bill bill)
+    {
+        if (bill.IsDebt && bill.DebtSettledAt is null && BillingCalculator.Outstanding(bill) == 0m)
+            bill.DebtSettledAt = DateTimeOffset.UtcNow;
+    }
+
     private static void ApplyContext(Bill bill, BillKind kind, Guid sourceId)
     {
         switch (kind)

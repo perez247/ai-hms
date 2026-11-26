@@ -1,4 +1,4 @@
-<div class="mx-auto max-w-6xl">
+<div class="mx-auto px-4">
   @if (loading()) { <div class="card p-10 text-center text-slate-500">Loading patient record…</div> }
   @if (basic(); as basic) {
     <div class="flex flex-wrap items-start justify-between gap-4">
@@ -26,6 +26,10 @@
               <p><span class="font-semibold">Phone:</span> {{ basic.patient.phone || '—' }}</p>
               <p><span class="font-semibold">Email:</span> {{ basic.patient.email || '—' }}</p>
               <p><span class="font-semibold">Address:</span> {{ basic.patient.address || '—' }}</p>
+              <p><span class="font-semibold">State of origin:</span> {{ basic.patient.stateOfOrigin || '—' }}</p>
+              <p><span class="font-semibold">Home town:</span> {{ basic.patient.homeTown || '—' }}</p>
+              <p><span class="font-semibold">Allergy:</span> {{ basic.patient.allergy || '—' }}</p>
+              <p><span class="font-semibold">Occupation:</span> {{ basic.patient.occupation || '—' }}</p>
             </div>
             <div class="space-y-2 text-sm text-slate-700">
               <p><span class="font-semibold">Registration expires:</span> {{ basic.patient.currentRegistrationExpiresAt | date:'mediumDate' }}</p>
@@ -166,6 +170,35 @@
               <div class="grid gap-3 sm:grid-cols-3"><div class="rounded-xl bg-slate-50 p-3"><p class="stat-label">Billed</p><p class="mt-1 font-bold">{{ money.totalBilled | currency:'NGN':'symbol-narrow':'1.2-2' }}</p></div><div class="rounded-xl bg-slate-50 p-3"><p class="stat-label">Paid</p><p class="mt-1 font-bold">{{ money.totalPaid | currency:'NGN':'symbol-narrow':'1.2-2' }}</p></div><div class="rounded-xl bg-teal-50 p-3"><p class="stat-label text-teal-700">Balance</p><p class="mt-1 font-bold text-teal-900">{{ money.balance | currency:'NGN':'symbol-narrow':'1.2-2' }}</p></div></div>
               @if (money.bills?.length) {<div class="mt-4 space-y-2">@for (bill of money.bills; track bill.id) {<div class="rounded-lg bg-slate-50 p-3 text-sm"><span class="font-semibold">{{ bill.billNumber }}</span> · {{ bill.status }} · {{ bill.balance | currency:'NGN':'symbol-narrow':'1.2-2' }}</div>}</div>}
             } @else if (finance() === null) { <p class="text-sm text-slate-500">Finance details are not available for this role.</p> }
+          </div>
+        </details>
+      }
+
+      @if (canSee('medications')) {
+        <details class="card overflow-hidden" (toggle)="onToggle('medications', $event)">
+          <summary class="cursor-pointer list-none px-5 py-4 font-bold text-slate-900">Medications</summary>
+          <div class="border-t border-slate-100 p-5">
+            @if (sectionLoading() === 'medications') { <p class="text-sm text-slate-500">Loading medications…</p> }
+            @if (medications(); as meds) {
+              @if (meds.length === 0) {
+                <p class="mt-3 rounded-xl bg-slate-50 p-3 text-sm font-semibold text-slate-600">No medications prescribed.</p>
+              } @else {
+                <div class="overflow-x-auto"><table class="table"><thead><tr><th>Encounter</th><th>Medication</th><th>Dose</th><th>Route</th><th>Frequency</th><th>Duration</th><th>Prescribed</th><th>Dispensed</th><th>Status</th></tr></thead><tbody>
+                  @for (med of meds; track med.id) {<tr>
+                    <td>{{ med.encounterNumber }} <span class="text-xs text-slate-500">{{ med.encounterType }}</span></td>
+                    <td class="font-semibold">{{ med.medicationName }}</td>
+                    <td>{{ med.dose }}</td>
+                    <td>{{ med.route }}</td>
+                    <td>{{ med.frequency }}</td>
+                    <td>{{ med.durationDays }} day(s)</td>
+                    <td>{{ med.quantityPrescribed }}</td>
+                    <td>{{ med.quantityDispensed }}</td>
+                    <td><span [class]="med.status === 'Dispensed' ? 'badge-green' : med.status === 'PartiallyDispensed' ? 'badge-amber' : 'badge-slate'">{{ med.status }}</span></td>
+                  </tr>}
+                  @if (meds.length === 0) {<tr><td colspan="9" class="py-6 text-center text-slate-500">No medications.</td></tr>}
+                </tbody></table></div>
+              }
+            }
           </div>
         </details>
       }

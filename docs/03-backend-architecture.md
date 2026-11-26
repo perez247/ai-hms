@@ -73,10 +73,10 @@ Configuration keys:
 
 **Important split enforced by permissions:**
 
-- Pharmacy has `pharmacy.dispense` and `pharmacy.commit`, but not `billing.approve` or `billing.payment`.
+- Pharmacy has `pharmacy.dispense` and `pharmacy.commit`, and shares the Bills page with Finance (`billing.approve`, `billing.negotiate`, `billing.payment`, `hmo.read`); the account book stays Finance-only.
 - Finance has `billing.approve` and `billing.payment`, but not `pharmacy.dispense` or `hmo.priorauth.manage`.
 - HMO Office has `hmo.approve`, but not `billing.approve` or `billing.payment`.
-- Doctor/HMO/Pharmacy cannot approve a bill.
+- Doctor and HMO Office cannot approve a bill; Pharmacy can approve, but only through the normal payment/HMO gates.
 - HR Office has only HR permissions.
 
 ## 3.4 Endpoint groups
@@ -125,6 +125,7 @@ All services use transactions where a business action creates several rows (regi
 - HMO approval requires tariff confirmation on medication lines and an issued PA.
 - Finance approval creates the HMO receivable; `RecordPaymentAsync` updates receivable settlement and the account book.
 - Negotiated discounts are stored as `BillAdjustment` rows with Finance approver and reason.
+- Unpaid bills can be moved to the debt ledger (`IsDebt`, `DebtOwner`). Self-pay debt belongs to the patient; HMO debt belongs to the HMO company. `RecordPaymentAsync`/`ApproveAsync` set `DebtSettledAt` once the outstanding balance reaches zero.
 
 ## 3.7 Background jobs
 

@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Hms.Infrastructure.Services;
 
 /// <summary>Small lookup projections used by forms (HMOs, doctors, enrollments).</summary>
-public sealed class ReferenceService(HmsDbContext db) : IReferenceService
+public sealed class ReferenceService(HmsDbContext db, IStocksService stocks) : IReferenceService
 {
     public async Task<IReadOnlyList<HmoOptionDto>> GetHmosAsync(CancellationToken cancellationToken = default) =>
         await db.HmoCompanies.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Name)
@@ -24,4 +24,19 @@ public sealed class ReferenceService(HmsDbContext db) : IReferenceService
             .OrderByDescending(x => x.IsPrimary)
             .Select(x => new HmoEnrollmentOptionDto(x.Id, x.HmoCompanyId, x.HmoCompany!.Name, x.HmoMemberId, x.PlanName, x.IsPrimary))
             .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<ReferenceOptionDto>> GetMedicationsAsync(CancellationToken cancellationToken = default) =>
+        await db.Medications.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Name)
+            .Select(x => new ReferenceOptionDto(x.Id, x.Code, x.Name, x.Strength)).ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<ReferenceOptionDto>> GetInvestigationsAsync(CancellationToken cancellationToken = default) =>
+        await db.InvestigationCatalogItems.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Name)
+            .Select(x => new ReferenceOptionDto(x.Id, x.Code, x.Name, x.Category)).ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<ReferenceOptionDto>> GetProceduresAsync(CancellationToken cancellationToken = default) =>
+        await db.SurgeryCatalogItems.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Name)
+            .Select(x => new ReferenceOptionDto(x.Id, x.Code, x.Name, null)).ToListAsync(cancellationToken);
+
+    public Task<IReadOnlyList<StockItemDto>> GetStockItemsAsync(StockItemType? type, Guid? payerId, string? search, CancellationToken cancellationToken = default) =>
+        stocks.ListAsync(type, search, payerId, false, cancellationToken);
 }
