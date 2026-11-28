@@ -23,5 +23,11 @@ public sealed class RecordAdministrationCommandValidator : AbstractValidator<Rec
         RuleFor(x => x.Request.Route).NotEmpty().MaximumLength(100);
         RuleFor(x => x.Request.BatchNumber).MaximumLength(100);
         RuleFor(x => x.Request.Notes).MaximumLength(2000);
+        RuleFor(x => x.Request.NonAcceptanceReason)
+            .NotEmpty()
+            .WithMessage("A reason is required when the medication is not accepted by the patient.")
+            .When(x => x.Request.Accepted == false);
+        RuleFor(x => x.Request.NonAcceptanceReason)
+            .MaximumLength(2000);
     }
 }

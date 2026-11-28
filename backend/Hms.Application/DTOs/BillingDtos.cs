@@ -62,6 +62,7 @@ public sealed record BillDto(
     IReadOnlyList<BillLineDto> Lines,
     IReadOnlyList<PaymentDto> Payments,
     IReadOnlyList<BillAdjustmentDto> Adjustments,
+    IReadOnlyList<MedicationAdministrationDto>? MedicationAdministrations,
     HmoReceivableDto? Receivable,
     bool IsDebt,
     DebtOwner? DebtOwner,

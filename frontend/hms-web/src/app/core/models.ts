@@ -161,6 +161,7 @@ export interface Bill {
   isDebt: boolean; debtOwner: string | null; debtRecordedAt: string | null;
   debtReason: string | null; debtSettledAt: string | null;
   lines: BillLine[]; payments: Payment[]; adjustments: BillAdjustment[]; receivable: HmoReceivable | null;
+  medicationAdministrations: MedicationAdministration[] | null;
 }
 
 export interface PriorAuthorization {
@@ -338,6 +339,12 @@ export interface AppointmentPriceQuote {
 export interface NursePrescriptionItem {
   prescriptionItemId: string; dispenseItemId: string | null; medicationName: string; dose: string;
   route: string; frequency: string; quantityPrescribed: number; quantityDispensed: number; canAdminister: boolean;
+}
+
+export interface MedicationAdministration {
+  id: string; medicationName: string; dose: string | null; route: string | null;
+  doseGiven: number; administeredAt: string; nurseName: string;
+  accepted: boolean; nonAcceptanceReason: string | null; charged: boolean;
 }
 
 export interface NurseEncounter {

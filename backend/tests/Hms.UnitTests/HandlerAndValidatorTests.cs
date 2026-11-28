@@ -241,5 +241,5 @@ public sealed class HandlerAndValidatorTests
     private static BillDto Bill(Guid id) => new(id, "BILL-1", BillKind.OutpatientEncounter, BillStatus.Committed,
         Guid.NewGuid(), "PAT-1", "Ada Okafor", PayerType.SelfPay, null, null, null, null, "NGN", 100, 0, 0, 100, 0, 100,
         null, null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, null, null,
-        [], [], [], null, false, null, null, null, null);
+        [], [], [], null, null, false, null, null, null, null);
 }

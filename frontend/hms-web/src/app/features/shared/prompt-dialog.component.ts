@@ -5,9 +5,10 @@ import { BrnDialogImports, BrnDialogRef, injectBrnDialogContext } from '@spartan
 export interface PromptField {
   key: string;
   label: string;
-  type?: 'text' | 'number' | 'password';
+  type?: 'text' | 'number' | 'password' | 'select';
   value?: string | number;
   placeholder?: string;
+  options?: string[];
 }
 
 export interface PromptDialogData {
@@ -29,8 +30,15 @@ export interface PromptDialogData {
         @for (field of data.fields; track field.key) {
           <div>
             <label class="label">{{ field.label }}</label>
-            <input class="input" [type]="field.type || 'text'" [(ngModel)]="values[field.key]"
-              [placeholder]="field.placeholder || ''" />
+            @if (field.type === 'select') {
+              <select class="input" [(ngModel)]="values[field.key]">
+                <option value="">Select…</option>
+                @for (option of field.options ?? []; track option) { <option [value]="option">{{ option }}</option> }
+              </select>
+            } @else {
+              <input class="input" [type]="field.type || 'text'" [(ngModel)]="values[field.key]"
+                [placeholder]="field.placeholder || ''" />
+            }
           </div>
         }
       </div>

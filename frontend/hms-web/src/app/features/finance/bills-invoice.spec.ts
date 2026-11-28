@@ -29,7 +29,7 @@ describe('BillsComponent invoice formats', () => {
     createdAt: new Date().toISOString(), committedAt: null, hmoApprovedAt: null,
     financeApprovedAt: null, paidAt: null,
     isDebt: false, debtOwner: null, debtRecordedAt: null, debtReason: null, debtSettledAt: null,
-    payments: [], adjustments: [], receivable: null,
+    payments: [], adjustments: [], receivable: null, medicationAdministrations: null,
     lines: [
       line('Amoxicillin', 'Medication', 'Medication', 2, 1_000),
       line('Paracetamol', 'Medication', 'Medication', 3, 1_500),

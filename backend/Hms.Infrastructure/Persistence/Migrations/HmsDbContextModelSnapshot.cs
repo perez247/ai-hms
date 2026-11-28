@@ -2101,6 +2101,10 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<bool>("Accepted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("accepted");
+
                     b.Property<DateTimeOffset>("AdministeredAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("administered_at");
@@ -2131,6 +2135,11 @@ namespace Hms.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("encounter_id");
 
+                    b.Property<string>("NonAcceptanceReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("non_acceptance_reason");
+
                     b.Property<string>("Notes")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)")
@@ -2139,6 +2148,12 @@ namespace Hms.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("NurseId")
                         .HasColumnType("uuid")
                         .HasColumnName("nurse_id");
+
+                    b.Property<string>("NurseName")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("nurse_name");
 
                     b.Property<Guid>("PrescriptionItemId")
                         .HasColumnType("uuid")

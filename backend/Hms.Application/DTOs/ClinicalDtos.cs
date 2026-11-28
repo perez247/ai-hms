@@ -82,7 +82,9 @@ public sealed record RecordAdministrationRequest(
     decimal DoseGiven,
     string Route,
     string? BatchNumber,
-    string? Notes);
+    string? Notes,
+    bool Accepted,
+    string? NonAcceptanceReason);
 
 public sealed record RequestDischargeRequest(Guid AdmissionId, string DischargeSummary);
 
@@ -205,6 +207,19 @@ public sealed record PrescriptionItemSummaryDto(
     Guid StockItemId = default);
 public sealed record InvestigationSummaryDto(Guid Id, string Name, InvestigationStatus Status, DateTimeOffset OrderedAt);
 public sealed record SurgerySummaryDto(Guid Id, string Name, SurgeryStatus Status, DateTimeOffset ScheduledAt);
+
+/// <summary>A nurse medication administration record shown on the admission bill page.</summary>
+public sealed record MedicationAdministrationDto(
+    Guid Id,
+    string MedicationName,
+    string? Dose,
+    string? Route,
+    decimal DoseGiven,
+    DateTimeOffset AdministeredAt,
+    string NurseName,
+    bool Accepted,
+    string? NonAcceptanceReason,
+    bool Charged);
 
 public sealed record AdmissionDto(
     Guid Id,

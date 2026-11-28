@@ -485,21 +485,81 @@ public sealed partial class ClinicalService(
                     && (x.Status == AdmissionStatus.Active || x.Status == AdmissionStatus.PendingDischarge))
                 .Select(x => new { x.Id, x.Status })
                 .FirstOrDefaultAsync(cancellationToken);
+            Guid admissionId;
             if (activeAdmission is null)
             {
-                await CreateAdmissionAsync(new CreateAdmissionRequest(
+                var admission = await CreateAdmissionAsync(new CreateAdmissionRequest(
                     encounter.PatientId, encounter.DoctorId, WardType.General, null,
                     encounter.HmoEnrollmentId, encounter.PresentingComplaint, null), cancellationToken);
+                admissionId = admission.Id;
             }
             else if (activeAdmission.Status == AdmissionStatus.Active)
             {
-                await AddInpatientEncounterAsync(new CreateInpatientEncounterRequest(
-                    activeAdmission.Id, encounter.DoctorId, encounter.PresentingComplaint), cancellationToken);
+                admissionId = activeAdmission.Id;
             }
             else
             {
                 throw new AppConflictException("The patient's admission is awaiting discharge; complete it before admitting again.");
             }
+
+            // Link the outpatient encounter's bill to the admission so all charges (appointment,
+            // consultation, medications) accrue under the single admission bill.
+            var encounterBill = await db.Bills.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Kind == BillKind.Visit && x.EncounterId == encounter.Id && x.Status != BillStatus.Void, cancellationToken);
+            if (encounterBill is not null)
+            {
+                var admissionBill = await db.Bills.AsNoTracking()
+                    .FirstOrDefaultAsync(x => x.Kind == BillKind.Visit && x.AdmissionId == admissionId && x.Status != BillStatus.Void, cancellationToken);
+                if (admissionBill is null)
+                {
+                    // Move the encounter bill onto the admission bill.
+                    encounterBill.AdmissionId = admissionId;
+                    await db.SaveChangesAsync(cancellationToken);
+                }
+                else if (admissionBill.Id != encounterBill.Id)
+                {
+                    // Both bills exist: merge encounter bill lines into the admission bill and void the encounter bill.
+                    foreach (var line in encounterBill.Lines)
+                    {
+                        line.BillId = admissionBill.Id;
+                        line.AdmissionId = admissionId;
+                    }
+                    encounterBill.Status = BillStatus.Void;
+                    encounterBill.VoidReason = "Merged into admission bill";
+                    encounterBill.VoidedAt = DateTimeOffset.UtcNow;
+                    await db.SaveChangesAsync(cancellationToken);
+                }
+            }
+
+            // Copy the outpatient encounter's medications forward to the new inpatient encounter.
+            var outpatientMeds = await db.Prescriptions
+                .Include(x => x.Items).ThenInclude(x => x.StockItem)
+                .Where(x => x.EncounterId == encounter.Id && x.Status != PrescriptionStatus.Cancelled)
+                .SelectMany(x => x.Items.Select(item => new PrescribeOrderRequest(
+                    item.StockItemId, item.Dose, item.Route, item.Frequency,
+                    item.DurationDays, item.QuantityPrescribed, item.Instructions)))
+                .ToListAsync(cancellationToken);
+
+            await AddInpatientEncounterAsync(new CreateInpatientEncounterRequest(
+                admissionId, encounter.DoctorId, encounter.PresentingComplaint,
+                encounter.HistoryOfPresentingComplaint, encounter.PastMedicalSurgicalHistory,
+                encounter.FamilyHistory, encounter.Diagnosis, encounter.ClerkingDetails,
+                outpatientMeds), cancellationToken);
+
+            // Cancel prescriptions on the original outpatient encounter so they cannot be
+            // committed to Finance. Medications have been copied forward to the new inpatient
+            // encounter which will be dispensed to ward instead.
+            var outpatientPrescriptions = await db.Prescriptions
+                .Include(x => x.Items)
+                .Where(x => x.EncounterId == encounter.Id && x.Status != PrescriptionStatus.Cancelled)
+                .ToListAsync(cancellationToken);
+            foreach (var rx in outpatientPrescriptions)
+            {
+                rx.Status = PrescriptionStatus.Cancelled;
+                foreach (var item in rx.Items)
+                    item.QuantityDispensed = 0;
+            }
+            await db.SaveChangesAsync(cancellationToken);
         }
         else if (encounter.Disposition == EncounterDisposition.Discharge
             && encounter.Type == EncounterType.Inpatient && encounter.AdmissionId is not null)
@@ -510,11 +570,56 @@ public sealed partial class ClinicalService(
                 .FirstOrDefaultAsync(cancellationToken);
             if (status == AdmissionStatus.Active)
             {
+                // When an inpatient encounter is signed with Discharge, any undispensed prescription
+                // items are committed to Finance as bill lines on the admission bill (not left for
+                // ward dispensing, since the patient is being discharged).
+                await CommitUndispensedPrescriptionToAdmissionBill(encounter, cancellationToken);
+
                 await RequestDischargeAsync(new RequestDischargeRequest(
                     encounter.AdmissionId.Value,
                     $"Discharged from {encounter.EncounterNumber}: {encounter.Diagnosis}"), cancellationToken);
             }
         }
+    }
+
+    /// <summary>
+    /// Commits undispensed prescription items from a discharged inpatient encounter to the
+    /// admission bill as medication charge lines. Since the patient is leaving, these charges
+    /// are billed directly rather than left for nurse ward administration.
+    /// </summary>
+    private async Task CommitUndispensedPrescriptionToAdmissionBill(Encounter encounter, CancellationToken cancellationToken)
+    {
+        var prescription = await db.Prescriptions
+            .Include(x => x.Items).ThenInclude(x => x.StockItem)
+            .SingleOrDefaultAsync(x => x.EncounterId == encounter.Id && x.Status != PrescriptionStatus.Cancelled, cancellationToken);
+        if (prescription is null || prescription.Items.Count == 0) return;
+
+        // The admission visit bill is created with BillKind.Visit when the admission/encounter is
+        // created, so use GetOrCreateVisitBillAsync to find it rather than GetOrCreateAdmissionBillAsync
+        // which looks for BillKind.InpatientAdmission.
+        var admission = await db.Admissions.SingleAsync(x => x.Id == encounter.AdmissionId!.Value, cancellationToken);
+        var admissionBill = await billing.GetOrCreateVisitBillAsync(encounter, cancellationToken);
+
+        var medIds = prescription.Items.Select(x => x.StockItemId).Distinct().ToList();
+        var privatePrices = await db.ItemPrices.AsNoTracking()
+            .Where(x => x.FundingSource == FundingSource.Private && x.IsActive && medIds.Contains(x.StockItemId))
+            .ToDictionaryAsync(x => x.StockItemId, x => x.UnitPrice, cancellationToken);
+
+        foreach (var item in prescription.Items)
+        {
+            var remaining = item.QuantityPrescribed - item.QuantityDispensed;
+            if (remaining <= 0) continue;
+
+            await billing.AddChargeAsync(admissionBill.Id, BillLineCategory.Medication,
+                item.Medication?.Name ?? "Medication", remaining,
+                privatePrices.GetValueOrDefault(item.StockItemId),
+                ChargeSourceType.MedicationDispenseItem, item.Id, $"med-discharge:{item.Id}",
+                encounter.Id, encounter.AdmissionId, item.Medication?.TariffCode, cancellationToken);
+        }
+
+        prescription.Status = PrescriptionStatus.Dispensed;
+        prescription.Items.ToList().ForEach(x => x.QuantityDispensed = x.QuantityPrescribed);
+        await db.SaveChangesAsync(cancellationToken);
     }
 
     private async Task ReconcilePlanOrdersAsync(Encounter encounter, SaveEncounterRequest request, CancellationToken cancellationToken)

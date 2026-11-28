@@ -345,4 +345,81 @@ public sealed class DoctorEncounterListAndClerkingTests(HmsApiFactory factory) :
         Assert.NotNull(bill);
         Assert.NotEqual(BillStatus.Draft, bill!.Status);
     }
+
+    [Fact]
+    public async Task Outpatient_admit_cancels_outpatient_prescription_and_copies_to_inpatient()
+    {
+        var reception = await TestData.ClientAsync(factory, "receptionist@clinic.local");
+        var doctor = await TestData.ClientAsync(factory, "doctor@clinic.local");
+        var (patient, _, encounter, _) = await TestData.CreateOutpatientVisitAsync(reception, doctor);
+        var medicationId = await TestData.FirstMedicationIdAsync(doctor);
+
+        // Prescribe on the outpatient encounter, then sign with Admit disposition.
+        await TestData.PrescribeAsync(doctor, encounter.Id, medicationId, 3);
+        var sign = await doctor.PutAsJsonAsync($"/api/clinical/encounters/{encounter.Id}/clerking",
+            new SaveEncounterRequest("Fever", "Three days of fever", null, null, "R50.9", "Admit", null, true), TestData.Json);
+        sign.EnsureSuccessStatusCode();
+        var signed = await sign.Content.ReadFromJsonAsync<EncounterDto>(TestData.Json);
+        Assert.NotNull(signed);
+        Assert.Equal(EncounterStatus.Completed, signed.Status);
+
+        // The outpatient encounter's prescription should be cancelled.
+        var refreshedOutpatient = await doctor.GetFromJsonAsync<EncounterDto>(
+            $"/api/clinical/encounters/{encounter.Id}", TestData.Json);
+        Assert.NotNull(refreshedOutpatient);
+        var cancelledRx = refreshedOutpatient!.Prescriptions?.FirstOrDefault();
+        Assert.NotNull(cancelledRx);
+        Assert.Equal(PrescriptionStatus.Cancelled, cancelledRx.Status);
+
+        // The patient should now be an active inpatient with a new encounter.
+        var queue = await doctor.GetFromJsonAsync<DoctorQueueDto>("/api/clinical/doctor-queue", TestData.Json);
+        Assert.NotNull(queue);
+        var inpatientRow = Assert.Single(queue!.ActiveInpatients, x => x.PatientId == patient.Id);
+
+        // Find the new inpatient encounter(s) for this patient.
+        var allEncounters = await doctor.GetFromJsonAsync<List<EncounterListItemDto>>(
+            "/api/clinical/encounters?type=Inpatient&status=Open", TestData.Json);
+        var inpatientEncounters = allEncounters.Where(x => x.PatientId == patient.Id).ToList();
+        Assert.NotEmpty(inpatientEncounters);
+
+        // At least one inpatient encounter should have the copied prescription.
+        var foundCopiedPrescription = false;
+        foreach (var inpatient in inpatientEncounters)
+        {
+            var inpatientDetail = await doctor.GetFromJsonAsync<EncounterDto>(
+                $"/api/clinical/encounters/{inpatient.Id}", TestData.Json);
+            if (inpatientDetail?.Prescriptions?.Count > 0)
+            {
+                foundCopiedPrescription = true;
+                Assert.Equal(medicationId.ToString(), inpatientDetail.Prescriptions!.First().Items!.First().StockItemId.ToString());
+                break;
+            }
+        }
+        Assert.True(foundCopiedPrescription, "No inpatient encounter has the copied prescription");
+    }
+
+    [Fact]
+    public async Task Inpatient_discharge_commits_undispensed_prescription_to_admission_bill()
+    {
+        var reception = await TestData.ClientAsync(factory, "receptionist@clinic.local");
+        var doctor = await TestData.ClientAsync(factory, "doctor@clinic.local");
+        var finance = await TestData.ClientAsync(factory, "finance@clinic.local");
+        var patient = await TestData.CreatePatientAsync(reception);
+        var (admission, encounter) = await TestData.CreateInpatientAsync(doctor, patient);
+        var medicationId = await TestData.FirstMedicationIdAsync(doctor);
+
+        // Prescribe on the inpatient encounter but do NOT dispense.
+        await TestData.PrescribeAsync(doctor, encounter.Id, medicationId, 3);
+
+        // Sign with Discharge disposition.
+        var sign = await doctor.PutAsJsonAsync($"/api/clinical/encounters/{encounter.Id}/clerking",
+            new SaveEncounterRequest("Fever", "Three days of fever", null, null, "R50.9", "Discharge", null, true), TestData.Json);
+        sign.EnsureSuccessStatusCode();
+
+        // The admission bill should now contain medication charge lines from the undispensed prescription.
+        var bill = await finance.GetFromJsonAsync<BillDto>($"/api/billing/bills/{admission.BillId}", TestData.Json);
+        Assert.NotNull(bill);
+        Assert.Equal(BillStatus.Committed, bill.Status);
+        Assert.Contains(bill!.Lines, x => x.Category == BillLineCategory.Medication);
+    }
 }

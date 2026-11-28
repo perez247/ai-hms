@@ -143,17 +143,29 @@ export class NurseComponent implements OnInit {
     const values = await this.prompts.open({
       title: `Administer ${item.medicationName}`,
       description: `Prescribed ${item.quantityPrescribed} ${item.dose ?? ''} via ${item.route}.`,
-      fields: [{ key: 'dose', label: 'Quantity administered', type: 'number', value: 1 }],
+      fields: [
+        { key: 'dose', label: 'Quantity administered', type: 'number', value: 1 },
+        { key: 'accepted', label: 'Accepted by patient', type: 'select', options: ['Yes', 'No'] },
+        { key: 'reason', label: 'Reason for non-acceptance', type: 'text', placeholder:'Required if not accepted' },
+        { key: 'notes', label: 'Notes (optional)', type: 'text' },
+      ],
       confirmLabel: 'Log administration',
     });
     if (!values) return;
     const dose = Number(values['dose']);
     if (!dose || dose <= 0) { this.toast.error('Enter a valid administered quantity.'); return; }
+    const accepted = values['accepted'] === 'Yes';
+    if (!accepted && !(values['reason'] ?? '').trim()) {
+      this.toast.error('A reason is required when the patient does not accept the medication.');
+      return;
+    }
     this.api.clinical.administer({
       dispenseItemId: item.dispenseItemId, doseGiven: dose, route: item.route,
-      batchNumber: null, notes: this.activeInpatient()?.admissionNumber ?? 'Nurse triage',
+      batchNumber: null, notes: values['notes'] || null,
+      accepted,
+      nonAcceptanceReason: accepted ? null : values['reason']?.trim() || null,
     }).subscribe({
-      next: () => { this.toast.success('Administration logged and billed.'); this.loadEncounters(); },
+      next: () => { this.toast.success('Administration logged.'); this.loadEncounters(); },
       error: (err) => void err,
     });
   }

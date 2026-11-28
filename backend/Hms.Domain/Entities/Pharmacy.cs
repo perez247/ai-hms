@@ -103,11 +103,17 @@ public class MedicationAdministration : Entity
     public Guid DispenseItemId { get; set; }
     public DispenseItem? DispenseItem { get; set; }
     public Guid NurseId { get; set; }
+    /// <summary>Captured nurse name at administration time for display on the bill page.</summary>
+    public string NurseName { get; set; } = string.Empty;
     public DateTimeOffset AdministeredAt { get; set; } = DateTimeOffset.UtcNow;
     public decimal DoseGiven { get; set; }
     public string Route { get; set; } = string.Empty;
     public string? BatchNumber { get; set; }
     public string? Notes { get; set; }
+    /// <summary>Whether the patient accepted the medication.</summary>
+    public bool Accepted { get; set; }
+    /// <summary>Required when Accepted is false; explains why the medication was not given.</summary>
+    public string? NonAcceptanceReason { get; set; }
     public Guid? CreatedBy { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

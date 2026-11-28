@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using Hms.Application.Common;
 using Hms.Application.DTOs;
@@ -105,13 +106,88 @@ public sealed class NurseAndLedgerFlowTests(HmsApiFactory factory) : IClassFixtu
             $"/api/nurse/patients/{patient.PatientNumber}/encounters", TestData.Json);
         var item = refreshed!.SelectMany(x => x.Prescriptions).Single(x => x.CanAdminister);
         var administer = await nurse.PostAsJsonAsync("/api/clinical/administrations", new RecordAdministrationRequest(
-            item.DispenseItemId!.Value, 1m, item.Route, null, "Nurse test"), TestData.Json);
+            item.DispenseItemId!.Value, 1m, item.Route, null, "Nurse test", true, null), TestData.Json);
         administer.EnsureSuccessStatusCode();
 
         var bills = await finance.GetFromJsonAsync<PagedResult<BillDto>>(
             $"/api/billing/bills?patientId={patient.Id}", TestData.Json);
         Assert.Contains(bills!.Items.SelectMany(x => x.Lines),
             line => line.Category == BillLineCategory.Medication);
+    }
+
+    [Fact]
+    public async Task Non_accepted_medication_is_not_charged_to_bill()
+    {
+        var reception = await TestData.ClientAsync(factory, "receptionist@clinic.local");
+        var doctor = await TestData.ClientAsync(factory, "doctor@clinic.local");
+        var nurse = await TestData.ClientAsync(factory, "nurse@clinic.local");
+        var pharmacy = await TestData.ClientAsync(factory, "pharmacy@clinic.local");
+
+        var patient = await TestData.CreatePatientAsync(reception);
+        var (_, encounter) = await TestData.CreateInpatientAsync(doctor, patient);
+        var medicationId = await TestData.FirstMedicationIdAsync(doctor);
+        await TestData.PrescribeAsync(doctor, encounter.Id, medicationId, 3);
+
+        var prescription = await pharmacy.GetFromJsonAsync<PharmacyPrescriptionDto>(
+            $"/api/pharmacy/encounters/{encounter.Id}/prescription", TestData.Json);
+        Assert.NotNull(prescription);
+
+        var dispense = await pharmacy.PostAsJsonAsync("/api/pharmacy/dispenses", new DispenseRequest(prescription!.Id,
+            prescription.Items.Select(x => new DispenseItemRequest(x.Id, x.QuantityPrescribed)).ToList()), TestData.Json);
+        dispense.EnsureSuccessStatusCode();
+
+        var encounters = await nurse.GetFromJsonAsync<List<NurseEncounterDto>>(
+            $"/api/nurse/patients/{patient.PatientNumber}/encounters", TestData.Json);
+        var item = encounters!.SelectMany(x => x.Prescriptions).Single(x => x.CanAdminister);
+
+        // Nurse logs the medication as NOT accepted with a reason.
+        var administer = await nurse.PostAsJsonAsync("/api/clinical/administrations", new RecordAdministrationRequest(
+            item.DispenseItemId!.Value, 1m, item.Route, null, "Nurse test", false, "Patient refused"), TestData.Json);
+        administer.EnsureSuccessStatusCode();
+
+        // The bill should NOT contain a medication charge line for this administration.
+        var bills = await doctor.GetFromJsonAsync<PagedResult<BillDto>>(
+            $"/api/billing/bills?patientId={patient.Id}", TestData.Json);
+        var medicationLines = bills!.Items.SelectMany(x => x.Lines)
+            .Where(line => line.Category == BillLineCategory.Medication);
+        Assert.Empty(medicationLines);
+
+        // But the administration record should exist with Accepted=false and the reason recorded.
+        var bill = await doctor.GetFromJsonAsync<BillDto>(
+            $"/api/billing/bills/{bills.Items.First().Id}", TestData.Json);
+        Assert.NotNull(bill);
+        Assert.Contains(bill!.MedicationAdministrations, x => !x.Accepted && x.NonAcceptanceReason == "Patient refused");
+    }
+
+    [Fact]
+    public async Task Non_accepted_medication_without_reason_is_rejected()
+    {
+        var reception = await TestData.ClientAsync(factory, "receptionist@clinic.local");
+        var doctor = await TestData.ClientAsync(factory, "doctor@clinic.local");
+        var nurse = await TestData.ClientAsync(factory, "nurse@clinic.local");
+        var pharmacy = await TestData.ClientAsync(factory, "pharmacy@clinic.local");
+
+        var patient = await TestData.CreatePatientAsync(reception);
+        var (_, encounter) = await TestData.CreateInpatientAsync(doctor, patient);
+        var medicationId = await TestData.FirstMedicationIdAsync(doctor);
+        await TestData.PrescribeAsync(doctor, encounter.Id, medicationId, 3);
+
+        var prescription = await pharmacy.GetFromJsonAsync<PharmacyPrescriptionDto>(
+            $"/api/pharmacy/encounters/{encounter.Id}/prescription", TestData.Json);
+        Assert.NotNull(prescription);
+
+        var dispense = await pharmacy.PostAsJsonAsync("/api/pharmacy/dispenses", new DispenseRequest(prescription!.Id,
+            prescription.Items.Select(x => new DispenseItemRequest(x.Id, x.QuantityPrescribed)).ToList()), TestData.Json);
+        dispense.EnsureSuccessStatusCode();
+
+        var encounters = await nurse.GetFromJsonAsync<List<NurseEncounterDto>>(
+            $"/api/nurse/patients/{patient.PatientNumber}/encounters", TestData.Json);
+        var item = encounters!.SelectMany(x => x.Prescriptions).Single(x => x.CanAdminister);
+
+        // Nurse logs the medication as NOT accepted WITHOUT a reason → should be rejected.
+        var administer = await nurse.PostAsJsonAsync("/api/clinical/administrations", new RecordAdministrationRequest(
+            item.DispenseItemId!.Value, 1m, item.Route, null, null, false, null), TestData.Json);
+        Assert.Equal(HttpStatusCode.BadRequest, administer.StatusCode);
     }
 
     [Fact]

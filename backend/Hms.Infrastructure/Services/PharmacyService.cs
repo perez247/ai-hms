@@ -155,10 +155,15 @@ public sealed class PharmacyService(
         var encounter = prescription.Encounter!;
         var isInpatient = encounter.Type == EncounterType.Inpatient;
 
+        // An outpatient encounter signed with disposition "Admit" is treated as inpatient for
+        // routing: the prescription is dispensed to ward and charges accrue on the admission
+        // bill through nurse medication logs, not committed to Finance at dispense time.
+        var isWardDispense = isInpatient || encounter.Disposition == EncounterDisposition.Admit;
+
         // Outpatient prescriptions may only be committed after the doctor has signed the encounter.
         // Inpatient ward dispensing is still allowed while admitted; those charges accrue on the
         // admission bill and are only committed to Finance at discharge.
-        if (!isInpatient && FinanceCommitBlockedReason(encounter) is { } blocked)
+        if (!isWardDispense && FinanceCommitBlockedReason(encounter) is { } blocked)
             throw new AppConflictException(blocked);
 
         var warnings = new List<string>();
@@ -227,7 +232,7 @@ public sealed class PharmacyService(
                 CreatedBy = user.RequireId()
             });
 
-            if (isInpatient) continue;
+            if (isWardDispense) continue;
 
             var line = await billing.AddChargeAsync(bill.Id, BillLineCategory.Medication, medication.Name,
                 requestItem.Quantity, dispenseItem.UnitPrice, ChargeSourceType.MedicationDispenseItem,

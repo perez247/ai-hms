@@ -218,22 +218,31 @@ public sealed partial class ClinicalService
             ?? throw new AppNotFoundException("Dispense item not found.");
         var encounter = dispenseItem.Dispense!.Encounter!;
         if (request.DoseGiven <= 0) throw new AppConflictException("Dose must be greater than zero.");
+
+        if (!request.Accepted && string.IsNullOrWhiteSpace(request.NonAcceptanceReason))
+            throw new AppConflictException("A reason is required when the medication is not accepted by the patient.");
+
         var administration = new MedicationAdministration
         {
             EncounterId = encounter.Id,
             PrescriptionItemId = dispenseItem.PrescriptionItemId,
             DispenseItemId = dispenseItem.Id,
             NurseId = user.RequireId(),
+            NurseName = user.FullName,
             DoseGiven = request.DoseGiven,
             Route = request.Route,
             BatchNumber = request.BatchNumber,
             Notes = request.Notes,
+            Accepted = request.Accepted,
+            NonAcceptanceReason = request.Accepted ? null : request.NonAcceptanceReason?.Trim(),
             CreatedBy = user.RequireId()
         };
         db.MedicationAdministrations.Add(administration);
         await db.SaveChangesAsync(cancellationToken);
 
-        if (encounter.AdmissionId is not null)
+        // Only accepted administrations generate a bill charge. Non-accepted doses are logged
+        // for the clinical record but do not contribute to the bill totals.
+        if (request.Accepted && encounter.AdmissionId is not null)
         {
             var bill = await billing.GetOrCreateVisitBillAsync(encounter, cancellationToken);
             await billing.AddChargeAsync(bill.Id, BillLineCategory.Medication,

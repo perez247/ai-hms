@@ -162,6 +162,35 @@
             </table>
           </div>
         </div>
+
+        <!-- Nurse medication administration log -->
+        @if (bill.admissionId && bill.medicationAdministrations?.length) {
+          <div class="card overflow-hidden">
+            <div class="card-header flex flex-wrap items-center justify-between gap-2">
+              <h3 class="font-bold text-slate-900">Nurse medication log</h3>
+              <p class="text-xs text-slate-500">Only accepted administrations contribute to bill totals.</p>
+            </div>
+            <div class="max-h-64 overflow-y-auto">
+              <table class="table">
+                <thead>
+                  <tr><th>Medication</th><th>Dose given</th><th>Nurse</th><th>Administered</th><th>Status</th><th>Reason</th></tr>
+                </thead>
+                <tbody>
+                  @for (admin of bill.medicationAdministrations; track admin.id) {
+                    <tr>
+                      <td><p class="font-medium text-slate-800">{{ admin.medicationName }}</p><p class="text-xs text-slate-500">{{ admin.dose || '—' }} · {{ admin.route || '—' }}</p></td>
+                      <td class="text-right">{{ admin.doseGiven }}</td>
+                      <td>{{ admin.nurseName }}</td>
+                      <td>{{ admin.administeredAt | date:'short' }}</td>
+                      <td><span [class]="admin.accepted ? 'badge-green' : 'badge-red'">{{ admin.accepted ? 'Accepted' : 'Not accepted' }}</span></td>
+                      <td class="text-slate-500">{{ admin.nonAcceptanceReason || '—' }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          </div>
+        }
       </div>
     }
   </div>
